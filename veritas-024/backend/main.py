@@ -379,6 +379,19 @@ def reset_seed_case():
     }
 
 
+@app.post("/api/case/clear", tags=["Investigation"])
+def clear_case_docket():
+    """Clear all evidence, claims, entities, edges, flags, and contradictions for a clean blank case."""
+    database.clear_all_data()
+    audit.log_audit_entry(
+        action="CASE_CLEARED",
+        target="CASE:DOCKET",
+        detail={"message": "Cleared all docket evidence for new blank investigation"},
+        actor="system"
+    )
+    return {"status": "ok", "message": "Docket cleared successfully"}
+
+
 @app.post("/api/analyze", tags=["Investigation"])
 def trigger_analysis():
     """
@@ -531,4 +544,85 @@ def get_report():
 @app.get("/api/report.json", tags=["Report"])
 def get_report_json():
     return report.generate_report_json()
+
+
+@app.post("/api/claims/{claim_id}/correct", tags=["Extraction"])
+def correct_claim(claim_id: int, payload: dict):
+    """
+    Submits an investigator correction for an extracted claim.
+    Saves the correction as a separate record, keeps original extraction untouched,
+    and logs the edit cryptographically into the audit chain.
+    """
+    claim = database.get_claim_by_id(claim_id)
+    if not claim:
+        raise HTTPException(status_code=404, detail="Claim not found")
+
+    new_value = payload.get("value") or payload.get("corrected_value")
+    if not new_value:
+        raise HTTPException(status_code=400, detail="Corrected value is required")
+
+    note = payload.get("note", "Investigator human correction")
+
+    # Insert new claim as human correction linked to the same evidence, keeping original intact
+    new_claim_id = database.insert_claim(
+        evidence_id=claim["evidence_id"],
+        claim_type=claim["claim_type"],
+        value=new_value,
+        normalized_value=new_value,
+        label="VERIFIED_FACT",
+        location_ref=f"Corrected from Claim #{claim_id} ({claim.get('location_ref') or 'evidence'})",
+        confidence=1.0,
+        method="human_correction"
+    )
+
+    # Cryptographic audit log entry
+    audit.log_audit_entry(
+        action="CLAIM_CORRECTION",
+        target=f"CLAIM:{new_claim_id}",
+        detail={
+            "original_claim_id": claim_id,
+            "original_value": claim["value"],
+            "corrected_value": new_value,
+            "note": note,
+            "evidence_id": claim["evidence_id"]
+        },
+        actor="human"
+    )
+
+    new_claim = database.get_claim_by_id(new_claim_id)
+    return {
+        "status": "ok",
+        "original_claim": claim,
+        "corrected_claim": new_claim,
+        "message": f"Correction saved as Claim #{new_claim_id}. Original Claim #{claim_id} preserved."
+    }
+
+
+@app.get("/api/statement", tags=["Investigation"])
+def get_statement():
+    """Returns the 5-step incident narrative with sentence-level citations and verified/inferred split."""
+    return report.generate_statement_data()
+
+
+@app.get("/api/report/docx", tags=["Report"])
+def get_report_docx():
+    """Generates and downloads a Word DOCX dossier."""
+    docx_bytes = report.generate_report_docx()
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": "attachment; filename=VERITAS-024_docket_RF2291.docx"}
+    )
+
+
+@app.get("/api/report/csv", tags=["Report"])
+def get_report_csv(dataset: str = Query("all", description="evidence | claims | contradictions | audit")):
+    """Generates CSV export of selected investigation dataset."""
+    csv_str = report.generate_report_csv(dataset)
+    return Response(
+        content=csv_str,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=VERITAS-024_{dataset}.csv"}
+    )
+
 

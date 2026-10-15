@@ -1,18 +1,158 @@
 """
 Database module for VERITAS-024
-Manages SQLite in WAL mode with the strict 7-table schema.
+Manages Supabase PostgreSQL with transparent fallback to SQLite in WAL mode.
 """
 
 import os
+import re
 import sqlite3
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    HAVE_PSYCOPG2 = True
+except ImportError:
+    HAVE_PSYCOPG2 = False
+
 DB_PATH = Path(__file__).parent / "veritas.db"
 
 
-def get_db_connection() -> sqlite3.Connection:
+class PostgresCursorWrapper:
+    """Adapts psycopg2 RealDictCursor to match sqlite3.Cursor interface."""
+    def __init__(self, cur):
+        self._cur = cur
+        self.lastrowid = None
+        self.rowcount = 0
+
+    def execute(self, sql: str, params: Optional[Any] = None):
+        # Convert SQLite ? placeholders to PostgreSQL %s placeholders
+        pg_sql = re.sub(r'\?', '%s', sql)
+        
+        # Check if INSERT without RETURNING clause
+        is_insert = pg_sql.strip().upper().startswith("INSERT INTO") and "RETURNING" not in pg_sql.upper()
+        if is_insert:
+            pg_sql = pg_sql.rstrip("; ") + " RETURNING id"
+
+        if params is not None:
+            # Normalize list/tuple params (e.g. serialize complex dicts if needed)
+            normalized_params = []
+            for p in params:
+                if isinstance(p, (dict, list)):
+                    normalized_params.append(json.dumps(p))
+                else:
+                    normalized_params.append(p)
+            self._cur.execute(pg_sql, tuple(normalized_params))
+        else:
+            self._cur.execute(pg_sql)
+
+        self.rowcount = self._cur.rowcount
+        if is_insert:
+            try:
+                row = self._cur.fetchone()
+                if row and "id" in row:
+                    self.lastrowid = row["id"]
+            except Exception:
+                pass
+        return self
+
+    def fetchone(self) -> Optional[Dict[str, Any]]:
+        row = self._cur.fetchone()
+        return self._normalize_row(row)
+
+    def fetchall(self) -> List[Dict[str, Any]]:
+        rows = self._cur.fetchall()
+        return [self._normalize_row(r) for r in rows if r is not None]
+
+    @staticmethod
+    def _normalize_row(row: Optional[Any]) -> Optional[Dict[str, Any]]:
+        if not row:
+            return None
+        d = dict(row)
+        # Ensure json columns return standard JSON strings for callers that use json.loads
+        for k in ["meta_json", "aliases_json", "evidence_claim_ids_json", "region_json", "detail_json"]:
+            if k in d and isinstance(d[k], (dict, list)):
+                d[k] = json.dumps(d[k])
+        return d
+
+
+_PG_POOL = None
+
+
+def get_pg_pool(db_url: str):
+    global _PG_POOL
+    if _PG_POOL is None:
+        from psycopg2.pool import ThreadedConnectionPool
+        _PG_POOL = ThreadedConnectionPool(minconn=1, maxconn=10, dsn=db_url)
+    return _PG_POOL
+
+
+class PostgresConnectionWrapper:
+    """Adapts psycopg2 connection to match sqlite3.Connection interface."""
+    def __init__(self, conn, pool=None):
+        self._conn = conn
+        self._pool = pool
+
+    def cursor(self):
+        return PostgresCursorWrapper(self._conn.cursor(cursor_factory=RealDictCursor))
+
+    def execute(self, sql: str, params: Optional[Any] = None):
+        cur = self.cursor()
+        return cur.execute(sql, params)
+
+    def commit(self):
+        try:
+            self._conn.commit()
+        except Exception:
+            pass
+
+    def rollback(self):
+        try:
+            self._conn.rollback()
+        except Exception:
+            pass
+
+    def close(self):
+        if self._pool is not None:
+            try:
+                self._pool.putconn(self._conn)
+            except Exception:
+                try:
+                    self._conn.close()
+                except Exception:
+                    pass
+        else:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None:
+            self.commit()
+        else:
+            self.rollback()
+
+
+def get_db_connection():
+    """Returns a Supabase PostgreSQL connection wrapper or SQLite connection."""
+    backend = os.getenv("DB_BACKEND", "supabase").strip().lower()
+    db_url = os.getenv("DATABASE_URL", "").strip()
+
+    if backend == "supabase" and db_url and HAVE_PSYCOPG2:
+        try:
+            pool = get_pg_pool(db_url)
+            conn = pool.getconn()
+            return PostgresConnectionWrapper(conn, pool=pool)
+        except Exception as e:
+            print(f"[VERITAS-024] Notice: Supabase pool error ({e}), falling back to direct SQLite.")
+
+    # Fallback to local SQLite in WAL mode
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL;")
@@ -20,9 +160,29 @@ def get_db_connection() -> sqlite3.Connection:
     return conn
 
 
+
 def init_db() -> None:
     """Initialize database tables and WAL mode."""
-    conn = get_db_connection()
+    backend = os.getenv("DB_BACKEND", "supabase").strip().lower()
+    db_url = os.getenv("DATABASE_URL", "").strip()
+
+    if backend == "supabase" and db_url and HAVE_PSYCOPG2:
+        try:
+            conn = get_db_connection()
+            # Verify connectivity to Supabase
+            with conn:
+                conn.execute("SELECT 1 FROM evidence_vault LIMIT 1")
+            conn.close()
+            print("[VERITAS-024] Initialized database using Supabase PostgreSQL.")
+            return
+        except Exception as e:
+            print(f"[VERITAS-024] Supabase init check notice ({e}).")
+
+    # SQLite fallback init
+    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA foreign_keys=ON;")
     with conn:
         conn.executescript("""
         CREATE TABLE IF NOT EXISTS evidence_vault (

@@ -423,10 +423,10 @@ def extract_claims_via_gemini(image_bytes: bytes, filename: str) -> Optional[Lis
         from google import genai
         from google.genai import types
 
-        model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        model_name = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
         client = genai.Client(api_key=api_key)
 
-        prompt_text = "Extract only what is visibly written. Do not interpret or guess. If unsure, omit."
+        prompt_text = "You are an evidence extraction assistant. Extract all entities (person, org), dates, amounts, bank accounts, invoice or transaction references, and statements visibly written on this image. Extract only what is visibly written. Do not interpret or guess. If unsure, omit."
         prompt_hash = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()
 
         # Send image as bytes part

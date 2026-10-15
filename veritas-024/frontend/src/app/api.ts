@@ -34,7 +34,7 @@ export interface ExtractedClaim {
   label: EpistemicLabel;
   location_ref?: string | null;
   confidence: number;
-  method: "parser" | "gemini" | "rapidocr" | "regex";
+  method: "parser" | "gemini" | "rapidocr" | "regex" | "human_correction" | string;
 }
 
 export interface TamperFlag {
@@ -221,6 +221,65 @@ export async function resetSeedCase(): Promise<{ status: string; message: string
   return apiFetch("/api/seed/reset", { method: "POST" });
 }
 
+export async function clearCase(): Promise<{ status: string; message: string }> {
+  return apiFetch("/api/case/clear", { method: "POST" });
+}
+
+export interface StatementSentence {
+  sentence: string;
+  citation: string;
+  type: "verified_fact" | "ai_inference";
+  confidence?: number;
+}
+
+export interface StatementStep {
+  step_number: number;
+  title: string;
+  description: string;
+  sentences: StatementSentence[];
+}
+
+export interface VerifiedFactItem {
+  fact: string;
+  citation: string;
+  label: "VERIFIED_FACT";
+  evidence_id: number;
+}
+
+export interface AIInferenceItem {
+  inference: string;
+  confidence: number;
+  confidence_reason: string;
+  citations: string[];
+  review_status: string;
+  reviewer_note?: string | null;
+}
+
+export interface StatementData {
+  summary: string;
+  steps: StatementStep[];
+  verified_facts: VerifiedFactItem[];
+  ai_inferences: AIInferenceItem[];
+  footer: string;
+}
+
+export async function correctClaim(
+  claimId: number,
+  correctedValue: string,
+  note?: string
+): Promise<{ status: string; original_claim: ExtractedClaim; corrected_claim: ExtractedClaim; message: string }> {
+  return apiFetch(`/api/claims/${claimId}/correct`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ corrected_value: correctedValue, note }),
+  });
+}
+
+export async function getStatement(): Promise<StatementData> {
+  return apiFetch<StatementData>("/api/statement");
+}
+
 function jsonStringifySafe(obj: any): string {
   return JSON.stringify(obj);
 }
+

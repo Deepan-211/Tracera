@@ -85,71 +85,54 @@ def resolve_entities_and_build_graph() -> Tuple[List[Dict[str, Any]], List[Dict[
         }
         return ent_id
 
-    # 1. Register canonical core entities
-    rf_id = get_or_create_entity("RF-2291", "txn_ref")
-    cinewave_id = get_or_create_entity("CineWave Retail", "org", ["CineWave Retail Billing", "CineWave Returns Desk"])
-    ravi_id = get_or_create_entity("Ravi Kumar", "person", ["R. Kumar", "Customer Ravi Kumar"])
-    anita_id = get_or_create_entity("Anita Rao", "person", ["anita.rao@cinewave.internal"])
-    apex_id = get_or_create_entity("Apex Commerce Bank", "org")
-    rk_ent_id = get_or_create_entity("R. Kumar Enterprises", "org", ["R. Kumar"])
-    acc_id = get_or_create_entity("Account Ending 4417", "account", ["50100499284417", "9102837464417"])
+    if not all_claims:
+        return [], [], []
 
-    # 2. Extract and link entities from extracted claims
+    # 1. Extract and register entities dynamically strictly from extracted claims
     for claim in all_claims:
         c_type = claim["claim_type"]
         val = claim["value"].strip()
         norm_val = (claim.get("normalized_value") or "").strip()
+        if not val:
+            continue
 
-        if c_type == "person":
-            if "ravi" in val.lower() or "r. kumar" in val.lower():
-                get_or_create_entity(val, "person", ["Ravi Kumar", "R. Kumar"])
-            elif "anita" in val.lower():
-                get_or_create_entity(val, "person", ["Anita Rao"])
-            else:
-                get_or_create_entity(val, "person")
-        elif c_type == "org":
-            get_or_create_entity(val, "org")
-        elif c_type == "account":
-            get_or_create_entity(f"Account Ending {norm_val or val[-4:]}", "account", [val])
-        elif c_type == "txn_ref":
-            get_or_create_entity(val, "txn_ref")
+        if c_type in ["person", "org", "location", "account", "txn_ref"]:
+            aliases = [norm_val] if norm_val and norm_val != val else []
+            get_or_create_entity(val, c_type, aliases)
 
     # Refresh all entities from DB
     db_entities = database.get_all_entities()
     ent_lookup = {e["name"]: e for e in db_entities}
     ent_id_lookup = {e["id"]: e for e in db_entities}
 
-    # 3. Build semantic edges between entities supported by claim evidence
-    # Group claim IDs by entity relationships
-    cinewave_claims = [c["id"] for c in all_claims if "cinewave" in c["value"].lower() or "receipt" in str(evidence_by_id.get(c["evidence_id"], {}).get("filename", "")).lower()]
-    ravi_claims = [c["id"] for c in all_claims if "ravi" in c["value"].lower() or "r. kumar" in c["value"].lower()]
-    anita_claims = [c["id"] for c in all_claims if "anita" in c["value"].lower()]
-    bank_claims = [c["id"] for c in all_claims if "apex" in c["value"].lower() or "statement" in str(evidence_by_id.get(c["evidence_id"], {}).get("filename", "")).lower()]
-    chat_claims = [c["id"] for c in all_claims if "chat" in str(evidence_by_id.get(c["evidence_id"], {}).get("filename", "")).lower()]
+    # 2. Build semantic edges for entities co-occurring in the same evidence document
+    claims_by_evidence: Dict[int, List[Dict[str, Any]]] = {}
+    for c in all_claims:
+        claims_by_evidence.setdefault(c["evidence_id"], []).append(c)
 
-    edges_to_create = [
-        (cinewave_id, rf_id, "ISSUED_REFUND_CLAIM", cinewave_claims[:4], "EXTRACTED_OBSERVATION"),
-        (anita_id, rf_id, "APPROVED_CLAIM_INR_50000", anita_claims[:4], "EXTRACTED_OBSERVATION"),
-        (ravi_id, rf_id, "CLAIMANT_BENEFICIARY", ravi_claims[:4], "EXTRACTED_OBSERVATION"),
-        (ravi_id, anita_id, "CHAT_NEGOTIATION_INR_45000", chat_claims[:4], "EXTRACTED_OBSERVATION"),
-        (rf_id, acc_id, "DEBIT_ROUTING", bank_claims[:3], "EXTRACTED_OBSERVATION"),
-        (acc_id, rk_ent_id, "DISBURSED_PAYMENT", bank_claims[:3], "EXTRACTED_OBSERVATION"),
-        (apex_id, acc_id, "ESCROW_LEDGER_HOST", bank_claims[:2], "EXTRACTED_OBSERVATION"),
-        (rk_ent_id, ravi_id, "ALIAS_ENTITY_CORRELATION", [c["id"] for c in all_claims if "ravi" in c["value"].lower() or "enterprises" in c["value"].lower()][:3], "AI_INFERENCE"),
-    ]
+    for ev_id, ev_claims in claims_by_evidence.items():
+        doc_ent_ids = []
+        for c in ev_claims:
+            val = c["value"].strip()
+            if val in ent_lookup:
+                ent_id = ent_lookup[val]["id"]
+                if ent_id not in doc_ent_ids:
+                    doc_ent_ids.append(ent_id)
 
-    for src_id, tgt_id, rel, claim_ids, label in edges_to_create:
-        if src_id and tgt_id and src_id in ent_id_lookup and tgt_id in ent_id_lookup:
-            database.insert_edge(
-                source_entity_id=src_id,
-                target_entity_id=tgt_id,
-                relation=rel,
-                evidence_claim_ids=claim_ids,
-                label=label
-            )
-            src_node = str(src_id)
-            tgt_node = str(tgt_id)
-            G.add_edge(src_node, tgt_node, relation=rel, label=label, claim_ids=claim_ids)
+        for i in range(len(doc_ent_ids)):
+            for j in range(i + 1, min(i + 4, len(doc_ent_ids))):
+                src_id = doc_ent_ids[i]
+                tgt_id = doc_ent_ids[j]
+                rel = f"ASSOCIATED_IN_DOC_{ev_id}"
+                c_ids = [c["id"] for c in ev_claims if c["value"].strip() in [ent_id_lookup.get(src_id, {}).get("name"), ent_id_lookup.get(tgt_id, {}).get("name")]]
+                database.insert_edge(
+                    source_entity_id=src_id,
+                    target_entity_id=tgt_id,
+                    relation=rel,
+                    evidence_claim_ids=c_ids[:4],
+                    label="EXTRACTED_OBSERVATION"
+                )
+                G.add_edge(str(src_id), str(tgt_id), relation=rel, label="EXTRACTED_OBSERVATION", claim_ids=c_ids[:4])
 
     # 4. Add all entities as nodes to NetworkX graph
     for ent in db_entities:
@@ -312,6 +295,9 @@ def detect_contradictions() -> List[Dict[str, Any]]:
     all_flags = database.get_all_tamper_flags()
 
     evidence_by_id = {e["id"]: e for e in all_evidence}
+
+    if not all_claims and not all_flags:
+        return []
 
     detected_contradictions: List[Dict[str, Any]] = []
 

@@ -9,6 +9,7 @@ interface VaultPaneProps {
   onSelectEvidence: (id: number) => void;
   onUpload: (file: File) => Promise<void>;
   onLoadSeedCase: () => Promise<void>;
+  onClearCase?: () => Promise<void>;
   isLoading: boolean;
 }
 
@@ -18,6 +19,7 @@ export default function VaultPane({
   onSelectEvidence,
   onUpload,
   onLoadSeedCase,
+  onClearCase,
   isLoading,
 }: VaultPaneProps) {
   const [dragOver, setDragOver] = useState(false);
@@ -46,13 +48,24 @@ export default function VaultPane({
             {evidenceList.length} DOCKET ITEM{evidenceList.length === 1 ? "" : "S"}
           </p>
         </div>
-        <button
-          onClick={onLoadSeedCase}
-          disabled={isLoading}
-          className="border border-ink bg-paper px-2 py-1 text-xs font-mono font-medium hover:bg-desk active:translate-y-px transition-colors uppercase disabled:opacity-50"
-        >
-          {isLoading ? "SEEDING..." : "LOAD DEMO CASE"}
-        </button>
+        <div className="flex items-center space-x-1.5">
+          {onClearCase && evidenceList.length > 0 && (
+            <button
+              onClick={onClearCase}
+              disabled={isLoading}
+              className="border border-stamp text-stamp bg-paper px-2 py-1 text-[11px] font-mono hover:bg-desk active:translate-y-px uppercase font-semibold disabled:opacity-50"
+            >
+              CLEAR
+            </button>
+          )}
+          <button
+            onClick={onLoadSeedCase}
+            disabled={isLoading}
+            className="border border-ink bg-paper px-2 py-1 text-[11px] font-mono font-medium hover:bg-desk active:translate-y-px transition-colors uppercase disabled:opacity-50"
+          >
+            {isLoading ? "LOADING..." : "DEMO SUITE"}
+          </button>
+        </div>
       </div>
 
       {/* Drag & Drop Upload Ruled Dropzone */}
