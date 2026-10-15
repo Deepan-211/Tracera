@@ -1,0 +1,145 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --desk: #E7E2D3;
+  --paper: #F8F5EC;
+  --ink: #1B1B18;
+  --rule: #C9C2AE;
+  --stamp: #B3261E;
+  --fact: #2F6B3A;
+  --observation: #9A6A12;
+  --inference: #3E5560;
+}
+
+* {
+  border-radius: 0px !important;
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--desk);
+  color: var(--ink);
+  font-family: var(--font-sans), sans-serif;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Rubber Stamp Style: uppercase mono, 2px stamp-red border, slightly rotated -1.5deg */
+.stamp-badge {
+  display: inline-block;
+  font-family: var(--font-mono), monospace;
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--stamp);
+  border: 2px solid var(--stamp);
+  padding: 1px 6px;
+  transform: rotate(-1.5deg);
+  line-height: 1.2;
+  user-select: none;
+}
+
+/* Epistemic Labels: distinguished by SHAPE and color */
+.label-verified-fact {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  background-color: var(--fact);
+  color: #FFFFFF;
+  padding: 2px 7px;
+  border: 1px solid var(--fact);
+}
+
+.label-extracted-obs {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  background-color: transparent;
+  color: var(--observation);
+  border: 1px solid var(--observation);
+  padding: 2px 7px;
+}
+
+.label-ai-inference {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.68rem;
+  font-style: italic;
+  background-color: transparent;
+  color: var(--inference);
+  border: 1px dashed var(--inference);
+  padding: 2px 7px;
+}
+
+.label-tamper-indicator {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--stamp);
+  border: 2px solid var(--stamp);
+  padding: 1px 6px;
+  transform: rotate(-1.5deg);
+}
+
+/* Section Header: plain uppercase with 1px underline */
+.case-section-header {
+  font-family: var(--font-sans), sans-serif;
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+}
+
+/* Folder tab styling: square, top/side border only */
+.folder-tab {
+  border: 1px solid var(--rule);
+  border-bottom: none;
+  background-color: var(--desk);
+  padding: 6px 14px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+
+.folder-tab.active {
+  background-color: var(--paper);
+  border-color: var(--rule);
+  position: relative;
+  top: 1px;
+}
+
+/* Ruled ledger lines */
+.ruled-row {
+  border-bottom: 1px solid var(--rule);
+}
+.ruled-row:hover {
+  background-color: rgba(231, 226, 211, 0.45);
+}
+
+/* Paper sheet container */
+.paper-sheet {
+  background-color: #FFFFFF;
+  border: 1px solid var(--rule);
+  box-shadow: 1px 1px 0px 0px var(--rule);
+}

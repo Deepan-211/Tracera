@@ -1,0 +1,39 @@
+# Environment & Secrets
+.env
+*.env
+**/.env
+**/.env*
+!**/.env.example
+
+# Databases & local storage
+*.db
+*.db-wal
+*.db-shm
+**/veritas.db*
+**/storage/raw_vault/*
+!**/storage/raw_vault/.gitkeep
+**/storage/ela_heatmaps/*
+!**/storage/ela_heatmaps/.gitkeep
+**/test_heat/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+
+# Node / Next.js
+node_modules/
+.next/
+dist/
+out/
+.DS_Store
+*.tsbuildinfo
+
+# Temporary & logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

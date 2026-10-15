@@ -1,0 +1,20 @@
+# Veritas-024 gitignore
+.env
+*.env
+backend/.env
+backend/veritas.db
+backend/veritas.db-wal
+backend/veritas.db-shm
+__pycache__/
+*.pyc
+venv/
+.venv/
+node_modules/
+.next/
+dist/
+out/
+.DS_Store
+storage/raw_vault/*
+!storage/raw_vault/.gitkeep
+storage/ela_heatmaps/*
+!storage/ela_heatmaps/.gitkeep
