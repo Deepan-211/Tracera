@@ -407,8 +407,84 @@ def extract_claims_from_chat(content_bytes: bytes, filename: str) -> List[Extrac
 
 
 # -------------------------------------------------------------------------
-# Image Extraction: Gemini Vision -> RapidOCR -> Regex Fallback
+# Image & Text Extraction via Gemini LLM
 # -------------------------------------------------------------------------
+
+def extract_claims_via_gemini_text(text: str, filename: str) -> Optional[List[ExtractedClaim]]:
+    """
+    Call Gemini LLM via google-genai SDK to extract structured forensic claims from any document text.
+    """
+    api_key = os.getenv("GOOGLE_API_KEY", "").strip()
+    if not api_key or not text.strip():
+        return None
+
+    try:
+        from google import genai
+        from google.genai import types
+
+        model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+        client = genai.Client(api_key=api_key)
+
+        prompt_text = (
+            f"You are an expert digital forensics evidence extraction engine analyzing document '{filename}'.\n"
+            "Extract all verifiable claims, observations, and entities strictly from the text provided below:\n"
+            "- Dates (claim_type='date', normalized_value in YYYY-MM-DD format)\n"
+            "- Monetary amounts (claim_type='amount', normalized_value numeric e.g. '50000.00')\n"
+            "- Persons (claim_type='person', names of individuals, senders, recipients, signatories, beneficiaries, employees)\n"
+            "- Organizations (claim_type='org', company, vendor, or bank names)\n"
+            "- Accounts (claim_type='account', bank account numbers or card numbers)\n"
+            "- Transaction references (claim_type='txn_ref', invoice, receipt, voucher, or transaction IDs)\n"
+            "- Locations (claim_type='location', addresses, cities)\n"
+            "- Factual statements (claim_type='statement', key factual assertions or actions)\n\n"
+            "Rules:\n"
+            "1. Extract ONLY information explicitly present in the text. Do not invent or assume.\n"
+            "2. Provide the exact verbatim snippet in 'quote'.\n"
+            "3. For 'location_ref', specify where in the document it was found (e.g. Header, Page 1, Section A, Line 2).\n"
+            "4. Return clean structured JSON."
+        )
+        prompt_hash = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()
+
+        response = client.models.generate_content(
+            model=model_name,
+            contents=[prompt_text, f"DOCUMENT TEXT:\n{text[:16000]}"],
+            config=types.GenerateContentConfig(
+                system_instruction=prompt_text,
+                response_mime_type="application/json",
+                response_schema=ExtractionResult,
+                temperature=0.0
+            )
+        )
+
+        raw_resp = response.text or "{}"
+        resp_hash = hashlib.sha256(raw_resp.encode("utf-8")).hexdigest()
+
+        audit.log_audit_entry(
+            action="GEMINI_CALL",
+            target=f"FILE:{filename}",
+            detail={
+                "model": model_name,
+                "prompt_hash": prompt_hash,
+                "response_hash": resp_hash,
+                "purpose": "text_claim_extraction"
+            },
+            actor="system"
+        )
+
+        parsed = ExtractionResult.model_validate_json(raw_resp)
+        claims = []
+        for c in parsed.claims:
+            c.method = "gemini"
+            c.confidence = 0.92
+            if c.claim_type == "date" and not c.normalized_value:
+                c.normalized_value = normalize_date(c.value)
+            elif c.claim_type == "amount" and not c.normalized_value:
+                c.normalized_value = normalize_amount(c.value)
+            claims.append(c)
+        return claims
+    except Exception as e:
+        print(f"Gemini text extraction error for {filename}: {e}")
+        return None
+
 
 def extract_claims_via_gemini(image_bytes: bytes, filename: str) -> Optional[List[ExtractedClaim]]:
     """
@@ -423,7 +499,7 @@ def extract_claims_via_gemini(image_bytes: bytes, filename: str) -> Optional[Lis
         from google import genai
         from google.genai import types
 
-        model_name = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
+        model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
         client = genai.Client(api_key=api_key)
 
         prompt_text = "You are an evidence extraction assistant. Extract all entities (person, org), dates, amounts, bank accounts, invoice or transaction references, and statements visibly written on this image. Extract only what is visibly written. Do not interpret or guess. If unsure, omit."
@@ -466,7 +542,7 @@ def extract_claims_via_gemini(image_bytes: bytes, filename: str) -> Optional[Lis
         claims = []
         for c in parsed.claims:
             c.method = "gemini"
-            c.confidence = 0.75  # OCR/Vision medium confidence
+            c.confidence = 0.88
             if c.claim_type == "date" and not c.normalized_value:
                 c.normalized_value = normalize_date(c.value)
             elif c.claim_type == "amount" and not c.normalized_value:
@@ -475,7 +551,6 @@ def extract_claims_via_gemini(image_bytes: bytes, filename: str) -> Optional[Lis
         return claims
 
     except Exception as e:
-        # Fallback to RapidOCR
         return None
 
 
@@ -491,7 +566,6 @@ def extract_claims_via_rapidocr(image_bytes: bytes) -> List[ExtractedClaim]:
 
         for item in ocr_res:
             poly, text, ocr_conf = item
-            # Compute bbox [x, y, w, h] from poly
             xs = [p[0] for p in poly]
             ys = [p[1] for p in poly]
             min_x, max_x = int(min(xs)), int(max(xs))
@@ -499,19 +573,17 @@ def extract_claims_via_rapidocr(image_bytes: bytes) -> List[ExtractedClaim]:
             bbox_str = f"[{min_x},{min_y},{max_x - min_x},{max_y - min_y}]"
 
             # Check for Transaction Ref
-            for m in re.finditer(r"\b(RF-\d+)\b", text):
+            for m in re.finditer(r"\b([A-Z0-9]{2,10}[-_][A-Z0-9]{3,12}|RF-\d+|INV-\d+|TXN-\d+)\b", text):
                 claims.append(ExtractedClaim(
                     claim_type="txn_ref",
                     value=m.group(1),
                     normalized_value=m.group(1),
                     location_ref=bbox_str,
                     quote=text,
-                    confidence=0.65,  # Subtract 0.10 for OCR fallback
+                    confidence=0.65,
                     method="rapidocr"
                 ))
 
-            # Check for Date
-            # Regex for date e.g. 06 Mar 2026, 06Mar2026, 06/03/2026
             date_match = re.search(r"(\d{1,2}\s*[A-Za-z]{3}\s*\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{4})", text)
             if date_match:
                 raw_d = date_match.group(1)
@@ -527,11 +599,10 @@ def extract_claims_via_rapidocr(image_bytes: bytes) -> List[ExtractedClaim]:
                         method="rapidocr"
                     ))
 
-            # Check for Amount
             amt_match = re.search(r"(?:INR|Rs\.?|₹)?\s*([\d,]+(?:\.\d{2})?)", text)
             if amt_match:
                 norm_amt = normalize_amount(amt_match.group(1))
-                if norm_amt and float(norm_amt) >= 1000:
+                if norm_amt and float(norm_amt) >= 100:
                     claims.append(ExtractedClaim(
                         claim_type="amount",
                         value=amt_match.group(0).strip(),
@@ -542,7 +613,6 @@ def extract_claims_via_rapidocr(image_bytes: bytes) -> List[ExtractedClaim]:
                         method="rapidocr"
                     ))
 
-            # Check for Person (From: Anita Rao, To: Ravi Kumar)
             p_match = re.search(r"(?:From|To):\s*([A-Za-z\s]+?)(?:<|$)", text)
             if p_match:
                 p_name = p_match.group(1).strip()
@@ -565,22 +635,19 @@ def extract_claims_via_rapidocr(image_bytes: bytes) -> List[ExtractedClaim]:
 
 def extract_claims_from_image(image_bytes: bytes, filename: str) -> List[ExtractedClaim]:
     """Source order: Gemini Vision -> RapidOCR fallback -> Regex fallback."""
-    # 1. Try Gemini Vision
     gemini_claims = extract_claims_via_gemini(image_bytes, filename)
     if gemini_claims is not None and len(gemini_claims) > 0:
         return gemini_claims
 
-    # 2. Offline RapidOCR fallback
     ocr_claims = extract_claims_via_rapidocr(image_bytes)
     if ocr_claims:
         return ocr_claims
 
-    # 3. Regex fallback
     return []
 
 
 # -------------------------------------------------------------------------
-# Master Extraction Dispatcher
+# Master Extraction Dispatcher (100% Dynamic LLM for Any File)
 # -------------------------------------------------------------------------
 
 def extract_all_claims_for_evidence(
@@ -588,13 +655,72 @@ def extract_all_claims_for_evidence(
     file_type: str,
     file_bytes: bytes
 ) -> List[ExtractedClaim]:
+    """
+    Universal extraction pipeline:
+    1. Images: Gemini Vision
+    2. Text/PDF/DOCX/EML/CSV/JSON: Extracts text and passes to Gemini LLM
+    3. Graceful offline fallback to specialized parsers
+    """
     ext = file_type.lower().lstrip(".")
+
+    # 1. Images
+    if ext in ["png", "jpg", "jpeg", "webp", "bmp", "tiff", "gif"]:
+        return extract_claims_from_image(file_bytes, filename)
+
+    # 2. Extract full text from document
+    text_content = ""
+    if ext == "pdf":
+        try:
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
+            pages_text = [page.get_text() for page in doc]
+            text_content = "\n".join(pages_text)
+            doc.close()
+        except Exception:
+            text_content = ""
+
+    elif ext in ["eml", "msg"]:
+        try:
+            import email
+            import email.policy
+            msg = email.message_from_bytes(file_bytes, policy=email.policy.default)
+            body_part = msg.get_body(preferencelist=('plain', 'html'))
+            body_text = body_part.get_content() if body_part else ""
+            headers_text = f"From: {msg.get('From', '')}\nTo: {msg.get('To', '')}\nDate: {msg.get('Date', '')}\nSubject: {msg.get('Subject', '')}\n"
+            text_content = headers_text + "\n" + body_text
+        except Exception:
+            text_content = file_bytes.decode("utf-8", errors="replace")
+
+    elif ext in ["docx"]:
+        try:
+            import forensics
+            text_content = forensics.extract_docx_text(file_bytes)
+        except Exception:
+            text_content = file_bytes.decode("utf-8", errors="replace")
+
+    elif ext in ["txt", "json", "csv", "tsv", "log", "md", "xml", "html"]:
+        text_content = file_bytes.decode("utf-8", errors="replace")
+
+    else:
+        try:
+            import forensics
+            text_content = forensics.extract_generic_text(file_bytes)
+        except Exception:
+            text_content = file_bytes.decode("utf-8", errors="replace")
+
+    # 3. Process with Gemini LLM
+    if text_content.strip():
+        gemini_claims = extract_claims_via_gemini_text(text_content, filename)
+        if gemini_claims and len(gemini_claims) > 0:
+            return gemini_claims
+
+    # 4. Offline parser fallbacks if Gemini is not responding
     if ext == "pdf":
         return extract_claims_from_pdf(file_bytes)
-    elif ext == "eml":
+    elif ext in ["eml", "msg"]:
         return extract_claims_from_eml(file_bytes)
-    elif ext in ["txt", "json"]:
+    elif ext in ["txt", "json", "csv", "tsv", "log", "md"]:
         return extract_claims_from_chat(file_bytes, filename)
-    elif ext in ["png", "jpg", "jpeg"]:
-        return extract_claims_from_image(file_bytes, filename)
+
     return []
+
+

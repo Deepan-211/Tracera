@@ -360,3 +360,48 @@ def parse_chat_export(content_bytes: bytes, filename: str) -> Tuple[List[Dict[st
         full_text = content_bytes.decode("utf-8", errors="replace")
 
     return tamper_flags, metadata, full_text
+
+
+def extract_docx_text(docx_bytes: bytes) -> str:
+    """Extract text from DOCX file using standard zipfile XML parsing."""
+    import zipfile
+    import xml.etree.ElementTree as ET
+    try:
+        with zipfile.ZipFile(io.BytesIO(docx_bytes)) as z:
+            xml_content = z.read("word/document.xml")
+            tree = ET.fromstring(xml_content)
+            texts = []
+            for node in tree.iter():
+                if node.tag.endswith("}t") and node.text:
+                    texts.append(node.text)
+                elif node.tag.endswith("}p"):
+                    texts.append("\n")
+            res = "".join(texts).strip()
+            return res if res else extract_generic_text(docx_bytes)
+    except Exception:
+        return extract_generic_text(docx_bytes)
+
+
+def extract_generic_text(content_bytes: bytes) -> str:
+    """Extract readable text from generic or unknown file formats."""
+    try:
+        text = content_bytes.decode("utf-8")
+        printable = sum(1 for c in text if c.isprintable() or c in "\n\r\t")
+        if len(text) > 0 and (printable / len(text)) > 0.70:
+            return text
+    except Exception:
+        pass
+
+    try:
+        text = content_bytes.decode("latin-1")
+        printable = sum(1 for c in text if c.isprintable() or c in "\n\r\t")
+        if len(text) > 0 and (printable / len(text)) > 0.70:
+            return text
+    except Exception:
+        pass
+
+    import re
+    ascii_strings = re.findall(b"[A-Za-z0-9 .,:;!?'\"\\-_/\\(\\)]{4,}", content_bytes)
+    extracted = "\n".join(s.decode("ascii", errors="ignore") for s in ascii_strings[:500])
+    return extracted or "[Binary artifact with no readable text segments]"
+

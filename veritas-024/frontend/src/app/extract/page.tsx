@@ -122,59 +122,91 @@ export default function ExtractPage() {
     : "#";
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-paper font-mono text-ink">
+    <div className="space-y-6 pt-4">
       {/* Step Header */}
-      <div className="border-b border-rule p-4 bg-paper shrink-0">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="bg-ink text-paper text-xs font-bold px-2 py-0.5">
-                STEP 2 OF 5
-              </span>
-              <h1 className="text-base font-bold tracking-wider uppercase">
-                PER-FILE EXTRACTION &amp; OCR VERIFICATION
-              </h1>
-            </div>
-            <p className="text-xs text-ink/70 mt-0.5">
-              Review extracted text, metadata, and OCR observations. Investigators can edit/correct values;
-              corrections are stored as separate records preserving the original extraction and logging every edit.
-            </p>
-          </div>
-
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2">
+        <div>
           <div className="flex items-center space-x-2">
-            <Link
-              href="/upload"
-              className="border border-rule bg-white px-3 py-1.5 text-xs hover:bg-desk"
-            >
-              &larr; BACK: UPLOAD
-            </Link>
+            <span className="bg-zinc-950 text-white text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">
+              Step 2 of 5
+            </span>
+            <h1 className="text-xl font-bold tracking-tight text-zinc-950">
+              Claim Extraction &amp; OCR Verification
+            </h1>
+          </div>
+          <p className="text-xs text-zinc-500 mt-1">
+            Multimodal Gemini extraction &amp; OCR observations. Investigators can edit values; all audits are cryptographically recorded.
+          </p>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <Link
+            href="/upload"
+            className="px-4 py-2 text-xs font-semibold text-zinc-700 bg-white border border-zinc-200/80 rounded-full hover:bg-zinc-50 shadow-sm transition-all"
+          >
+            &larr; Step 1: Upload
+          </Link>
+          {evidenceList.length >= 2 ? (
             <Link
               href="/match"
-              className="border border-ink bg-white px-3 py-1.5 text-xs font-bold uppercase hover:bg-desk active:translate-y-px flex items-center space-x-1"
+              className="bg-zinc-950 text-white px-5 py-2 text-xs font-semibold rounded-full hover:bg-black active:scale-95 shadow-sm transition-all flex items-center space-x-1.5"
             >
-              <span>NEXT: MATCH RELATIONSHIPS</span>
+              <span>Next: Entity Graph</span>
               <span>&rarr;</span>
             </Link>
-          </div>
+          ) : (
+            <button
+              disabled
+              className="bg-zinc-100 text-zinc-400 px-5 py-2 text-xs font-semibold rounded-full cursor-not-allowed"
+              title="At least 2 files required"
+            >
+              🔒 Next: Match (Min 2)
+            </button>
+          )}
         </div>
       </div>
 
       {actionSuccessMsg && (
-        <div className="bg-fact/10 border-b border-fact px-4 py-2 text-xs text-fact font-bold flex items-center justify-between">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-xs text-emerald-800 font-semibold flex items-center justify-between">
           <span>✓ {actionSuccessMsg}</span>
-          <button onClick={() => setActionSuccessMsg(null)} className="text-ink text-[11px] underline">
-            DISMISS
+          <button onClick={() => setActionSuccessMsg(null)} className="text-zinc-600 text-[11px] underline">
+            Dismiss
           </button>
         </div>
       )}
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden max-w-7xl w-full mx-auto p-4 gap-4">
+      {/* Main Content Area or 2-File Blocker */}
+      {evidenceList.length < 2 && !isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="max-w-xl w-full bento-card-white rounded-[28px] p-8 text-center space-y-4 shadow-sm border border-amber-200">
+            <div className="text-4xl">⚠️</div>
+            <h2 className="text-base font-bold uppercase tracking-wider text-amber-800">
+              Insufficient Evidence (At least 2 files required)
+            </h2>
+            <p className="text-xs text-zinc-600 leading-relaxed">
+              Tracera is a cross-document forensic verification platform. Investigation and extraction analysis cannot proceed with only <strong>{evidenceList.length} file{evidenceList.length === 1 ? "" : "s"}</strong>.
+              At least two (2) evidence files are strictly required to correlate facts and cross-verify claims.
+            </p>
+            <div className="bg-zinc-50 rounded-xl p-2.5 text-xs font-mono text-zinc-600 border border-zinc-200">
+              Current Docket Status: <strong>{evidenceList.length} / 2 files uploaded</strong>
+            </div>
+            <div className="pt-2">
+              <Link
+                href="/upload"
+                className="bg-zinc-950 text-white px-6 py-2.5 text-xs font-semibold rounded-full hover:bg-black inline-block shadow-sm transition-all"
+              >
+                &larr; Return to Step 1 &amp; Upload Files
+              </Link>
+            </div>
+          </div>
+        </div>
+      ) : (
+      <div className="flex flex-col md:flex-row min-h-[580px] gap-5">
         {/* Left Column: File Tabs / Selector */}
-        <div className="w-full md:w-64 border border-rule bg-white flex flex-col shrink-0 overflow-hidden">
-          <div className="p-2.5 border-b border-rule bg-desk/50 flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider">
-              DOCKET FILES ({evidenceList.length})
+        <div className="w-full md:w-64 bento-card-white rounded-[28px] p-4 flex flex-col shrink-0 overflow-hidden shadow-sm">
+          <div className="pb-3 mb-2 border-b border-zinc-100 flex items-center justify-between">
+            <span className="text-xs font-bold text-zinc-950 uppercase tracking-tight">
+              Docket Files ({evidenceList.length})
             </span>
           </div>
 
@@ -226,34 +258,34 @@ export default function ExtractPage() {
         </div>
 
         {/* Center & Right Pane: File Inspector, OCR/Preview, and Claims Table */}
-        <div className="flex-1 flex flex-col min-h-0 border border-rule bg-white overflow-hidden">
+        <div className="flex-1 flex flex-col min-h-0 bento-card-white rounded-[28px] overflow-hidden shadow-sm">
           {isDetailLoading ? (
-            <div className="flex-1 flex items-center justify-center p-8 text-xs text-ink/50">
-              LOADING ARTIFACT DATA &amp; CLAIMS...
+            <div className="flex-1 flex items-center justify-center p-8 text-xs text-zinc-400 font-mono">
+              Loading artifact data &amp; claims...
             </div>
           ) : !selectedDetail.evidence ? (
-            <div className="flex-1 flex items-center justify-center p-8 text-xs text-ink/50">
-              SELECT AN ARTIFACT FROM THE LEFT TO REVIEW EXTRACTIONS.
+            <div className="flex-1 flex items-center justify-center p-8 text-xs text-zinc-400">
+              Select an artifact from the left to review extractions.
             </div>
           ) : (
-            <div className="flex-1 flex flex-col min-h-0 overflow-y-auto p-4 space-y-4">
+            <div className="flex-1 flex flex-col min-h-0 overflow-y-auto p-5 space-y-4">
               {/* Artifact Metadata Banner */}
-              <div className="border border-rule bg-paper p-3 flex flex-wrap items-start justify-between gap-3 text-xs">
+              <div className="bg-zinc-50 rounded-2xl border border-zinc-200/70 p-4 flex flex-wrap items-start justify-between gap-3 text-xs">
                 <div className="space-y-1">
                   <div className="flex items-center space-x-2">
-                    <span className="font-bold text-sm text-ink">
+                    <span className="font-bold text-sm text-zinc-950">
                       {selectedDetail.evidence.filename}
                     </span>
-                    <span className="border border-rule bg-desk px-1.5 py-0.5 text-[10px] uppercase">
+                    <span className="bg-zinc-200 text-zinc-800 px-2 py-0.5 rounded-full font-mono text-[10px] uppercase font-bold">
                       {selectedDetail.evidence.file_type}
                     </span>
-                    <span className="text-ink/60 text-[11px]">
+                    <span className="text-zinc-400 text-[11px] font-mono">
                       ID #{selectedDetail.evidence.id}
                     </span>
                   </div>
-                  <div className="text-[11px] text-ink/70">
-                    <span className="font-semibold text-ink">SHA-256:</span>{" "}
-                    <span className="select-all font-mono">{selectedDetail.evidence.sha256}</span>
+                  <div className="text-[11px] text-zinc-600">
+                    <span className="font-semibold text-zinc-900">SHA-256:</span>{" "}
+                    <span className="select-all font-mono text-[10px]">{selectedDetail.evidence.sha256}</span>
                   </div>
                 </div>
 
@@ -427,6 +459,7 @@ export default function ExtractPage() {
           )}
         </div>
       </div>
+      )}
 
       {/* Edit / Correction Modal */}
       {editingClaim && (
@@ -523,13 +556,23 @@ export default function ExtractPage() {
           >
             &larr; STEP 1: UPLOAD
           </Link>
-          <Link
-            href="/match"
-            className="border-2 border-ink bg-paper px-4 py-2 font-bold uppercase hover:bg-desk active:translate-y-px flex items-center space-x-2 shadow-[2px_2px_0px_0px_#1B1B18]"
-          >
-            <span>PROCEED TO STEP 3: MATCH RELATIONSHIPS</span>
-            <span>&rarr;</span>
-          </Link>
+          {evidenceList.length >= 2 ? (
+            <Link
+              href="/match"
+              className="border-2 border-ink bg-paper px-4 py-2 font-bold uppercase hover:bg-desk active:translate-y-px flex items-center space-x-2 shadow-[2px_2px_0px_0px_#1B1B18]"
+            >
+              <span>PROCEED TO STEP 3: MATCH RELATIONSHIPS</span>
+              <span>&rarr;</span>
+            </Link>
+          ) : (
+            <button
+              disabled
+              className="border-2 border-rule bg-desk text-ink/40 px-4 py-2 font-bold uppercase cursor-not-allowed"
+              title="At least two evidence files required"
+            >
+              🔒 PROCEED TO STEP 3 (MINIMUM 2 FILES REQUIRED)
+            </button>
+          )}
         </div>
       </div>
     </div>

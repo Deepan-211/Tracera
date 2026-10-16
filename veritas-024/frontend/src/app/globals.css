@@ -3,143 +3,135 @@
 @tailwind utilities;
 
 :root {
-  --desk: #E7E2D3;
-  --paper: #F8F5EC;
-  --ink: #1B1B18;
-  --rule: #C9C2AE;
-  --stamp: #B3261E;
-  --fact: #2F6B3A;
-  --observation: #9A6A12;
-  --inference: #3E5560;
-}
-
-* {
-  border-radius: 0px !important;
-  box-sizing: border-box;
+  --desk: #F3F4F6;
+  --paper: #FFFFFF;
+  --ink: #111827;
+  --rule: #E5E7EB;
+  --stamp: #EF4444;
+  --fact: #10B981;
+  --observation: #F59E0B;
+  --inference: #6366F1;
 }
 
 body {
-  background-color: var(--desk);
-  color: var(--ink);
-  font-family: var(--font-sans), sans-serif;
+  background-color: #EAEBED;
+  background-image: 
+    radial-gradient(at 10% 20%, rgba(255, 255, 255, 0.8) 0px, transparent 50%),
+    radial-gradient(at 90% 10%, rgba(229, 231, 235, 0.7) 0px, transparent 50%),
+    radial-gradient(at 50% 80%, rgba(243, 244, 246, 0.8) 0px, transparent 60%),
+    radial-gradient(at 80% 90%, rgba(220, 224, 230, 0.5) 0px, transparent 50%);
+  background-attachment: fixed;
+  color: #111827;
+  font-family: var(--font-sans), Inter, system-ui, -apple-system, sans-serif;
   margin: 0;
   padding: 0;
-  overflow-x: hidden;
+  min-height: 100vh;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Rubber Stamp Style: uppercase mono, 2px stamp-red border, slightly rotated -1.5deg */
-.stamp-badge {
-  display: inline-block;
-  font-family: var(--font-mono), monospace;
-  font-weight: 700;
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--stamp);
-  border: 2px solid var(--stamp);
-  padding: 1px 6px;
-  transform: rotate(-1.5deg);
-  line-height: 1.2;
-  user-select: none;
+/* Glassmorphism Outer Container */
+.luxury-glass-shell {
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 
+    0 20px 50px -10px rgba(0, 0, 0, 0.06),
+    0 0 0 1px rgba(255, 255, 255, 0.6) inset;
 }
 
-/* Epistemic Labels: distinguished by SHAPE and color */
+/* White Bento Card */
+.bento-card-white {
+  background: #FFFFFF;
+  border: 1px solid rgba(229, 231, 235, 0.7);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.bento-card-white:hover {
+  box-shadow: 0 8px 30px -4px rgba(0, 0, 0, 0.06);
+  border-color: rgba(209, 213, 219, 0.9);
+}
+
+/* Dark Bento Card */
+.bento-card-dark {
+  background: #18181B;
+  color: #FFFFFF;
+  border: 1px solid rgba(39, 39, 42, 0.8);
+  box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.3);
+}
+
+/* Epistemic Labels with Modern Rounded Tags */
 .label-verified-fact {
   display: inline-flex;
   align-items: center;
+  gap: 0.35rem;
   font-family: var(--font-mono), monospace;
   font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.04em;
-  background-color: var(--fact);
-  color: #FFFFFF;
-  padding: 2px 7px;
-  border: 1px solid var(--fact);
+  background-color: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
 .label-extracted-obs {
   display: inline-flex;
   align-items: center;
+  gap: 0.35rem;
   font-family: var(--font-mono), monospace;
   font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.04em;
-  background-color: transparent;
-  color: var(--observation);
-  border: 1px solid var(--observation);
-  padding: 2px 7px;
+  background-color: rgba(245, 158, 11, 0.12);
+  color: #D97706;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
 .label-ai-inference {
   display: inline-flex;
   align-items: center;
+  gap: 0.35rem;
   font-family: var(--font-mono), monospace;
   font-size: 0.68rem;
   font-style: italic;
-  background-color: transparent;
-  color: var(--inference);
-  border: 1px dashed var(--inference);
-  padding: 2px 7px;
+  background-color: rgba(99, 102, 241, 0.12);
+  color: #4F46E5;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  border: 1px dashed rgba(99, 102, 241, 0.3);
 }
 
 .label-tamper-indicator {
   display: inline-flex;
   align-items: center;
+  gap: 0.35rem;
   font-family: var(--font-mono), monospace;
   font-size: 0.68rem;
   font-weight: 700;
   text-transform: uppercase;
-  color: var(--stamp);
-  border: 2px solid var(--stamp);
-  padding: 1px 6px;
-  transform: rotate(-1.5deg);
+  background-color: rgba(239, 68, 68, 0.12);
+  color: #DC2626;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
-/* Section Header: plain uppercase with 1px underline */
-.case-section-header {
-  font-family: var(--font-sans), sans-serif;
-  font-weight: 600;
-  font-size: 0.78rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink);
-  border-bottom: 1px solid var(--rule);
-  padding-bottom: 6px;
-  margin-bottom: 10px;
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
-
-/* Folder tab styling: square, top/side border only */
-.folder-tab {
-  border: 1px solid var(--rule);
-  border-bottom: none;
-  background-color: var(--desk);
-  padding: 6px 14px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  cursor: pointer;
+::-webkit-scrollbar-track {
+  background: transparent;
 }
-
-.folder-tab.active {
-  background-color: var(--paper);
-  border-color: var(--rule);
-  position: relative;
-  top: 1px;
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.4);
+  border-radius: 9999px;
 }
-
-/* Ruled ledger lines */
-.ruled-row {
-  border-bottom: 1px solid var(--rule);
-}
-.ruled-row:hover {
-  background-color: rgba(231, 226, 211, 0.45);
-}
-
-/* Paper sheet container */
-.paper-sheet {
-  background-color: #FFFFFF;
-  border: 1px solid var(--rule);
-  box-shadow: 1px 1px 0px 0px var(--rule);
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 114, 128, 0.6);
 }

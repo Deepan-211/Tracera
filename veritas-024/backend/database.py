@@ -324,6 +324,16 @@ def get_evidence_by_sha256(sha256: str) -> Optional[Dict[str, Any]]:
     return dict(row) if row else None
 
 
+def delete_evidence(evidence_id: int) -> None:
+    conn = get_db_connection()
+    with conn:
+        conn.execute("DELETE FROM tamper_flags WHERE evidence_id = ?", (evidence_id,))
+        conn.execute("DELETE FROM extracted_claims WHERE evidence_id = ?", (evidence_id,))
+        conn.execute("UPDATE evidence_vault SET duplicate_of_id = NULL WHERE duplicate_of_id = ?", (evidence_id,))
+        conn.execute("DELETE FROM evidence_vault WHERE id = ?", (evidence_id,))
+    conn.close()
+
+
 def insert_claim(
     evidence_id: int,
     claim_type: str,
@@ -453,10 +463,14 @@ def delete_claims_by_evidence(evidence_id: int) -> None:
 # -------------------------------------------------------------------------
 
 def insert_entity(name: str, entity_type: str, aliases: Optional[List[str]] = None) -> int:
+    norm_name = name.strip()
     conn = get_db_connection()
     aliases_json = json.dumps(aliases or [])
     with conn:
-        existing = conn.execute("SELECT id, aliases_json FROM entities WHERE name = ?", (name,)).fetchone()
+        existing = conn.execute(
+            "SELECT id, aliases_json FROM entities WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))",
+            (norm_name,)
+        ).fetchone()
         if existing:
             ent_id = existing["id"]
             if aliases:
@@ -469,11 +483,19 @@ def insert_entity(name: str, entity_type: str, aliases: Optional[List[str]] = No
             conn.close()
             return ent_id
 
-        cursor = conn.execute(
-            "INSERT INTO entities (name, type, aliases_json) VALUES (?, ?, ?)",
-            (name, entity_type, aliases_json)
-        )
-        ent_id = cursor.lastrowid
+        try:
+            cursor = conn.execute(
+                "INSERT INTO entities (name, type, aliases_json) VALUES (?, ?, ?)",
+                (norm_name, entity_type, aliases_json)
+            )
+            ent_id = cursor.lastrowid
+        except Exception:
+            # Fallback if conflict occurred or concurrent insert
+            existing = conn.execute(
+                "SELECT id FROM entities WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))",
+                (norm_name,)
+            ).fetchone()
+            ent_id = existing["id"] if existing else 0
     conn.close()
     return ent_id
 
@@ -614,4 +636,59 @@ def update_contradiction_review(
         updated = cursor.rowcount > 0
     conn.close()
     return updated
+
+
+def delete_evidence(evidence_id: int) -> bool:
+    """Deletes an evidence record and its associated claims and tamper flags."""
+    conn = get_db_connection()
+    with conn:
+        conn.execute("DELETE FROM extracted_claims WHERE evidence_id = ?", (evidence_id,))
+        conn.execute("DELETE FROM tamper_flags WHERE evidence_id = ?", (evidence_id,))
+        cursor = conn.execute("DELETE FROM evidence_vault WHERE id = ?", (evidence_id,))
+        deleted = cursor.rowcount > 0
+    conn.close()
+    return deleted
+
+
+def clear_all_case_data() -> None:
+    """Purges all investigation and docket data completely from all stores."""
+    # 1. Clear via standard connection
+    try:
+        conn = get_db_connection()
+        try:
+            conn.execute("PRAGMA foreign_keys = OFF;")
+        except Exception:
+            pass
+        with conn:
+            for table in ["contradictions", "edges", "entities", "tamper_flags", "extracted_claims", "evidence_vault"]:
+                try:
+                    conn.execute(f"DELETE FROM {table};")
+                except Exception as e:
+                    print(f"Error clearing {table}: {e}")
+        conn.close()
+    except Exception as e:
+        print(f"Standard clear error: {e}")
+
+    # 2. Also directly clear local SQLite veritas.db to ensure zero residual demo data
+    try:
+        if DB_PATH.exists():
+            s_conn = sqlite3.connect(str(DB_PATH))
+            s_conn.execute("PRAGMA foreign_keys = OFF;")
+            with s_conn:
+                for table in ["contradictions", "edges", "entities", "tamper_flags", "extracted_claims", "evidence_vault"]:
+                    try:
+                        s_conn.execute(f"DELETE FROM {table};")
+                    except Exception:
+                        pass
+            s_conn.close()
+    except Exception as e:
+        print(f"SQLite direct clear error: {e}")
+
+
+def clear_all_data() -> None:
+    """Alias for clear_all_case_data."""
+    clear_all_case_data()
+
+
+
 

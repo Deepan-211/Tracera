@@ -32,84 +32,88 @@ export default function StatementPage() {
   }, [fetchStatement]);
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-paper font-mono text-ink">
+    <div className="space-y-6 pt-4">
       {/* Step Header */}
-      <div className="border-b border-rule p-4 bg-paper shrink-0">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="bg-ink text-paper text-xs font-bold px-2 py-0.5">
-                STEP 4 OF 5
-              </span>
-              <h1 className="text-base font-bold tracking-wider uppercase">
-                INCIDENT NARRATIVE &amp; CAUSE-AND-EFFECT SYNTHESIS
-              </h1>
-            </div>
-            <p className="text-xs text-ink/70 mt-0.5">
-              Step-by-step incident narrative explaining cause and effect. Every sentence cites source file and location.
-              Verified facts are strictly segregated from AI inferences with explicit confidence scores.
-            </p>
-          </div>
-
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2">
+        <div>
           <div className="flex items-center space-x-2">
-            <Link
-              href="/match"
-              className="border border-rule bg-white px-3 py-1.5 text-xs hover:bg-desk"
-            >
-              &larr; BACK: MATCH
-            </Link>
+            <span className="bg-zinc-950 text-white text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">
+              Step 4 of 5
+            </span>
+            <h1 className="text-xl font-bold tracking-tight text-zinc-950">
+              Incident Narrative &amp; Cause-and-Effect
+            </h1>
+          </div>
+          <p className="text-xs text-zinc-500 mt-1">
+            Step-by-step incident narrative explaining cause and effect. Every sentence cites source file and location.
+          </p>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <Link
+            href="/match"
+            className="px-4 py-2 text-xs font-semibold text-zinc-700 bg-white border border-zinc-200/80 rounded-full hover:bg-zinc-50 shadow-sm transition-all"
+          >
+            &larr; Step 3: Graph
+          </Link>
+          {statementData && !statementData.insufficient_evidence ? (
             <Link
               href="/export"
-              className="border border-ink bg-white px-3 py-1.5 text-xs font-bold uppercase hover:bg-desk active:translate-y-px flex items-center space-x-1"
+              className="bg-zinc-950 text-white px-5 py-2 text-xs font-semibold rounded-full hover:bg-black active:scale-95 shadow-sm transition-all flex items-center space-x-1.5"
             >
-              <span>NEXT: EXPORT DOSSIER</span>
+              <span>Next: Export Dossier</span>
               <span>&rarr;</span>
             </Link>
-          </div>
+          ) : (
+            <button
+              disabled
+              className="bg-zinc-100 text-zinc-400 px-5 py-2 text-xs font-semibold rounded-full cursor-not-allowed"
+              title="At least 2 files required"
+            >
+              🔒 Next: Export (Min 2)
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Tabs / Filter Bar */}
-      <div className="border-b border-rule bg-desk/40 px-4 py-2 shrink-0">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2 text-xs">
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => setActiveTab("cause_effect")}
-              className={`px-3 py-1 border transition-colors uppercase font-bold text-xs ${
-                activeTab === "cause_effect"
-                  ? "bg-paper border-ink text-ink shadow-[1px_1px_0_0_#1B1B18]"
-                  : "bg-white/60 border-rule text-ink/70 hover:bg-white"
-              }`}
-            >
-              1. CAUSE &amp; EFFECT STEPS ({statementData?.steps?.length || 0})
-            </button>
-            <button
-              onClick={() => setActiveTab("verified_facts")}
-              className={`px-3 py-1 border transition-colors uppercase font-bold text-xs ${
-                activeTab === "verified_facts"
-                  ? "bg-paper border-fact text-fact shadow-[1px_1px_0_0_var(--fact)]"
-                  : "bg-white/60 border-rule text-ink/70 hover:bg-white"
-              }`}
-            >
-              2. VERIFIED FACTS ({statementData?.verified_facts?.length || 0})
-            </button>
-            <button
-              onClick={() => setActiveTab("ai_inferences")}
-              className={`px-3 py-1 border transition-colors uppercase font-bold text-xs ${
-                activeTab === "ai_inferences"
-                  ? "bg-paper border-inference text-inference shadow-[1px_1px_0_0_var(--inference)]"
-                  : "bg-white/60 border-rule text-ink/70 hover:bg-white"
-              }`}
-            >
-              3. AI INFERENCES ({statementData?.ai_inferences?.length || 0})
-            </button>
-          </div>
+      {/* Modern Tabs Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-zinc-200/60 text-xs">
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setActiveTab("cause_effect")}
+            className={`px-4 py-2 rounded-full font-semibold text-xs transition-all ${
+              activeTab === "cause_effect"
+                ? "bg-zinc-950 text-white shadow-sm"
+                : "bg-white text-zinc-600 border border-zinc-200 hover:bg-zinc-50"
+            }`}
+          >
+            Cause &amp; Effect ({statementData?.steps?.length || 0})
+          </button>
+          <button
+            onClick={() => setActiveTab("verified_facts")}
+            className={`px-4 py-2 rounded-full font-semibold text-xs transition-all ${
+              activeTab === "verified_facts"
+                ? "bg-emerald-600 text-white shadow-sm"
+                : "bg-white text-zinc-600 border border-zinc-200 hover:bg-zinc-50"
+            }`}
+          >
+            Verified Facts ({statementData?.verified_facts?.length || 0})
+          </button>
+          <button
+            onClick={() => setActiveTab("ai_inferences")}
+            className={`px-4 py-2 rounded-full font-semibold text-xs transition-all ${
+              activeTab === "ai_inferences"
+                ? "bg-indigo-600 text-white shadow-sm"
+                : "bg-white text-zinc-600 border border-zinc-200 hover:bg-zinc-50"
+            }`}
+          >
+            AI Inferences ({statementData?.ai_inferences?.length || 0})
+          </button>
+        </div>
 
-          <div className="flex items-center space-x-2 text-[11px] text-ink/60">
-            <span>EPISTEMIC SPLIT:</span>
-            <span className="label-verified-fact !text-[10px]">FACT: 100% DETERMINISTIC</span>
-            <span className="label-ai-inference !text-[10px]">INFERENCE: PROBABILISTIC</span>
-          </div>
+        <div className="flex items-center space-x-2 text-[11px] text-zinc-400">
+          <span className="label-verified-fact !text-[10px]">Fact: Deterministic</span>
+          <span className="label-ai-inference !text-[10px]">Inference: Probabilistic</span>
         </div>
       </div>
 
@@ -120,12 +124,29 @@ export default function StatementPage() {
             <div className="p-12 text-center text-xs text-ink/50 border border-rule bg-white">
               SYNTHESIZING CAUSE-AND-EFFECT INCIDENT NARRATIVE...
             </div>
-          ) : !statementData || statementData.steps?.length === 0 ? (
-            <div className="p-12 text-center text-xs text-ink/50 border border-rule bg-white space-y-2">
-              <p>NO EVIDENCE ARTIFACTS AVAILABLE TO GENERATE INCIDENT STATEMENT.</p>
-              <p className="text-[11px] text-ink/40">
-                Please upload files in Step 1 or click &quot;DEMO CASE&quot; in the header to load the canonical RF-2291 investigation.
+          ) : !statementData || statementData.insufficient_evidence || statementData.steps?.length === 0 ? (
+            <div className="max-w-xl mx-auto my-12 p-8 border-2 border-dashed border-stamp bg-white text-center space-y-4 shadow-[4px_4px_0px_0px_#1B1B18]">
+              <div className="text-4xl">⚠️</div>
+              <h2 className="text-sm font-bold uppercase tracking-wider text-stamp">
+                INSUFFICIENT EVIDENCE (AT LEAST 2 FILES REQUIRED)
+              </h2>
+              <p className="text-xs text-ink/80 leading-relaxed">
+                Incident narrative and cross-document cause-and-effect synthesis require <strong>at least two (2) evidence files</strong>.
+                {statementData?.evidence_count !== undefined && (
+                  <span> Currently {statementData.evidence_count} of 2 required files in docket.</span>
+                )}
               </p>
+              <div className="border border-rule bg-desk/50 p-2 text-xs font-mono">
+                Status: <strong>At least 2 evidence artifacts required to proceed</strong>
+              </div>
+              <div className="pt-2">
+                <Link
+                  href="/upload"
+                  className="border-2 border-ink bg-ink text-paper px-6 py-2.5 text-xs font-bold uppercase hover:bg-ink/90 active:translate-y-px inline-block shadow-[2px_2px_0px_0px_rgba(0,0,0,0.2)]"
+                >
+                  &larr; RETURN TO STEP 1 &amp; UPLOAD FILES
+                </Link>
+              </div>
             </div>
           ) : (
             <>
@@ -324,13 +345,23 @@ export default function StatementPage() {
           >
             &larr; STEP 3: MATCH
           </Link>
-          <Link
-            href="/export"
-            className="border-2 border-ink bg-paper px-4 py-2 font-bold uppercase hover:bg-desk active:translate-y-px flex items-center space-x-2 shadow-[2px_2px_0px_0px_#1B1B18]"
-          >
-            <span>PROCEED TO STEP 5: EXPORT &amp; AUDIT</span>
-            <span>&rarr;</span>
-          </Link>
+          {statementData && !statementData.insufficient_evidence ? (
+            <Link
+              href="/export"
+              className="border-2 border-ink bg-paper px-4 py-2 font-bold uppercase hover:bg-desk active:translate-y-px flex items-center space-x-2 shadow-[2px_2px_0px_0px_#1B1B18]"
+            >
+              <span>PROCEED TO STEP 5: EXPORT &amp; AUDIT</span>
+              <span>&rarr;</span>
+            </Link>
+          ) : (
+            <button
+              disabled
+              className="border-2 border-rule bg-desk text-ink/40 px-4 py-2 font-bold uppercase cursor-not-allowed"
+              title="At least two evidence files required"
+            >
+              🔒 PROCEED TO STEP 5 (MINIMUM 2 FILES REQUIRED)
+            </button>
+          )}
         </div>
       </div>
     </div>

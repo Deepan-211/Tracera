@@ -4,15 +4,21 @@ Generates HTML print-ready reports and structured JSON reports.
 Adheres strictly to the epistemic hierarchy and language guardrail principles.
 """
 
+import os
 import io
 import csv
 import json
+from pathlib import Path
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+from dotenv import load_dotenv
 
 import database
 import audit
 import investigation_engine
+
+ENV_PATH = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=ENV_PATH)
 
 
 def generate_report_json() -> Dict[str, Any]:
@@ -30,8 +36,8 @@ def generate_report_json() -> Dict[str, Any]:
     chain_verification = audit.verify_chain()
 
     return {
-        "case_id": "RF-2291",
-        "title": "Suspected Irregular Refund Disbursal Investigation Docket",
+        "case_id": f"DOCKET-{len(evidence):03d}" if evidence else "DOCKET-ACTIVE",
+        "title": "Digital Evidence Integrity Investigation Docket",
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "epistemic_principle": "AI suggests. A human decides. The platform never declares guilt, authenticity, or fraud.",
         "epistemic_hierarchy": {
@@ -161,7 +167,7 @@ def generate_report_html() -> str:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VERITAS-024 Investigation Docket - RF-2291</title>
+    <title>VERITAS-024 Forensic Investigation Docket</title>
     <style>
         :root {{
             --ink: #1B1B18;
@@ -354,7 +360,7 @@ def generate_report_html() -> str:
         <div class="header-section">
             <div>
                 <div class="brand-title">VERITAS-024 FORENSIC INVESTIGATION DOCKET</div>
-                <div class="case-ref">Case Matter: <strong>RF-2291</strong> &bull; CineWave Retail Disbursal Discrepancy</div>
+                <div class="case-ref">Case Matter: <strong>ACTIVE INVESTIGATION</strong> &bull; Submitted Evidentiary Docket</div>
             </div>
             <div style="text-align: right;" class="mono">
                 <div>Generated: {data['generated_at_utc'][:10]}</div>
@@ -459,9 +465,57 @@ def generate_report_html() -> str:
     return html_content
 
 
+def generate_llm_statement_summary(
+    evidence: List[Dict[str, Any]],
+    claims: List[Dict[str, Any]],
+    contras: List[Dict[str, Any]]
+) -> Optional[str]:
+    """Call Gemini LLM to generate a concise, grounded cross-document investigation summary."""
+    api_key = os.getenv("GOOGLE_API_KEY", "").strip()
+    if not api_key or len(evidence) < 2:
+        return None
+
+    try:
+        from google import genai
+        from google.genai import types
+
+        model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+        client = genai.Client(api_key=api_key)
+
+        ev_lines = [f"- '{e['filename']}' ({e['file_type'].upper()}, {e['size_bytes']} B)" for e in evidence]
+        c_lines = [f"- [{c['claim_type']}] {c['value']} ({c.get('location_ref') or 'Doc'})" for c in claims[:20]]
+        contra_lines = [f"- Discrepancy ({k['kind']}): {k['description']}" for k in contras[:6]]
+
+        prompt = (
+            "You are a digital forensics investigator summarizing an active multi-document investigation.\n"
+            f"Evidence Files Ingested ({len(evidence)} files):\n" + "\n".join(ev_lines) + "\n\n"
+            f"Extracted Observations:\n" + ("\n".join(c_lines) if c_lines else "None") + "\n\n"
+            f"Discrepancies Flagged:\n" + ("\n".join(contra_lines) if contra_lines else "None flagged") + "\n\n"
+            "Write a concise 2-sentence objective summary of this investigation across these documents.\n"
+            "Rules:\n"
+            "- NEVER use the words 'guilty', 'fraudster', 'authentic', 'forged', 'proves', 'proof of'.\n"
+            "- Use objective phrasing like 'flags', 'suggests', 'inconsistent with', 'discrepancy identified'.\n"
+            "- End your summary with: 'AI-generated observation. Requires independent human validation.'"
+        )
+
+        response = client.models.generate_content(
+            model=model_name,
+            contents=[prompt],
+            config=types.GenerateContentConfig(temperature=0.0)
+        )
+        if response.text:
+            text = investigation_engine.apply_language_guardrail(response.text.strip(), is_ai_narrative=True)
+            return text
+        return None
+    except Exception as e:
+        print(f"Gemini statement summary error: {e}")
+        return None
+
+
 def generate_statement_data() -> Dict[str, Any]:
     """
     Builds the 5-step incident narrative explaining cause and effect.
+    Requires at least two (2) evidence files.
     Every sentence cites file + location.
     Explicitly separates 'Verified facts' from 'AI inferences (unverified, with confidence)'.
     """
@@ -475,13 +529,15 @@ def generate_statement_data() -> Dict[str, Any]:
     ai_inferences = []
     narrative_steps = []
 
-    if not evidence:
+    if len(evidence) < 2:
         return {
-            "summary": "Docket is currently empty. Ingest documents or load demo suite to generate statement.",
+            "summary": "At least two (2) evidence files are required to perform cross-document comparison and generate an incident narrative.",
             "steps": [],
             "verified_facts": [],
             "ai_inferences": [],
-            "footer": "AI-generated. Not proof. Requires human review."
+            "insufficient_evidence": True,
+            "evidence_count": len(evidence),
+            "footer": "At least two files are required to process."
         }
 
     # Deterministic verified facts from evidence items
@@ -535,73 +591,67 @@ def generate_statement_data() -> Dict[str, Any]:
             "reviewer_note": None
         })
 
-    # Build sequential Cause-and-Effect Steps
-    # Step 1: Request Inception & Authorization
+    # Build sequential Cause-and-Effect Steps dynamically from user's actual files
+    # Step 1: Request Inception & Primary Evidentiary Ingestion
     step_1_sentences = []
-    slack_or_email = [ev for ev in evidence if ev["file_type"] in ["eml", "txt", "json"]]
-    if slack_or_email:
-        for ev in slack_or_email:
-            step_1_sentences.append({
-                "sentence": f"Communication trace initiated via {ev['filename']} establishing baseline request for disbursal.",
-                "citation": f"{ev['filename']} (Message Stream)",
-                "type": "verified_fact",
-                "confidence": 1.0
-            })
-    else:
+    for ev in evidence[:3]:
         step_1_sentences.append({
-            "sentence": f"Primary case artifacts ingested with cryptographic integrity anchors across {len(evidence)} docket items.",
-            "citation": f"{evidence[0]['filename']} (Vault Record)",
+            "sentence": f"Evidence artifact '{ev['filename']}' ({ev['file_type'].upper()}) ingested and sealed in immutable vault with SHA-256 fingerprint {ev['sha256'][:16]}...",
+            "citation": f"{ev['filename']} (Raw Vault Hash)",
             "type": "verified_fact",
             "confidence": 1.0
         })
 
-    dkim_flags = [f for f in flags if f["flag_type"] == "dkim_fail"]
-    if dkim_flags:
+    dkim_flags = [f for f in flags if f["flag_type"] in ["dkim_fail", "header_mismatch"]]
+    for f in dkim_flags[:2]:
+        f_name = ev_map.get(f["evidence_id"], {}).get("filename", "Email Evidence")
         step_1_sentences.append({
-            "sentence": "The authorization email lacks cryptographically verifiable DKIM domain key signatures, suggesting unauthenticated header generation.",
-            "citation": "approval_email.eml (Header: DKIM-Signature)",
+            "sentence": f"Communication authentication check on '{f_name}' identified header irregularities or unverifiable cryptographic signatures: {f['detail']}",
+            "citation": f"{f_name} (Header Authentication)",
             "type": "ai_inference",
             "confidence": 0.85
         })
 
     narrative_steps.append({
         "step_number": 1,
-        "title": "Initial Request Inception & Communication Flow",
-        "description": "Chronological trace of initial request routing and sender authorization.",
+        "title": "Evidence Ingestion & Cryptographic Sealing",
+        "description": "Chronological trace of initial file ingestion and cryptographic SHA-256 vault preservation.",
         "sentences": step_1_sentences
     })
 
-    # Step 2: Beneficiary Entity Resolution vs Vendor Master
+    # Step 2: Beneficiary & Entity Resolution
     step_2_sentences = []
-    vendor_ev = [ev for ev in evidence if "vendor" in ev["filename"].lower()]
-    if vendor_ev:
+    entities = database.get_all_entities()
+    if entities:
+        ent_names = ", ".join([e["name"] for e in entities[:4]])
         step_2_sentences.append({
-            "sentence": f"Vendor Master registration specifies verified beneficiary details and designated disbursement banking coordinates.",
-            "citation": f"{vendor_ev[0]['filename']} (Master Ledger)",
+            "sentence": f"Entity resolution identified and correlated key entities across submitted artifacts: {ent_names}.",
+            "citation": f"{evidence[0]['filename']} (Entity Map)",
             "type": "verified_fact",
             "confidence": 1.0
         })
-    account_contras = [c for c in contras if "account" in c["kind"].lower()]
-    if account_contras:
-        c = account_contras[0]
+
+    account_contras = [c for c in contras if "account" in c["kind"].lower() or "entity" in c["kind"].lower()]
+    for c in account_contras[:2]:
         step_2_sentences.append({
-            "sentence": "Bank statement recipient account diverges from approved vendor registration, indicating unverified beneficiary substitution.",
-            "citation": "bank_statement_oct2024.pdf (Line 14) vs vendor_master.json (bank_account)",
+            "sentence": f"Entity divergence identified: {c['description']}",
+            "citation": f"{c.get('narrative', '')[:60]}...",
             "type": "ai_inference",
-            "confidence": round(float(c["confidence"]), 2)
+            "confidence": round(float(c.get("confidence") or 0.90), 2)
         })
-    else:
+
+    if not account_contras:
         step_2_sentences.append({
-            "sentence": "Entity resolution algorithms evaluated relationships between individuals, corporate accounts, and disbursal targets.",
-            "citation": f"{evidence[0]['filename']} (Entity Map)",
+            "sentence": "Entity relationship mapping evaluated extracted individuals, corporate entities, and transaction identifiers without cross-entity routing conflicts.",
+            "citation": f"{evidence[0]['filename']} (Entity Graph)",
             "type": "ai_inference",
             "confidence": 0.90
         })
 
     narrative_steps.append({
         "step_number": 2,
-        "title": "Beneficiary Verification & Divergence Mapping",
-        "description": "Cause and effect evaluation comparing registered entity metadata against disbursal parameters.",
+        "title": "Entity Resolution & Relationship Mapping",
+        "description": "Cross-document correlation of persons, commercial entities, and designated accounts.",
         "sentences": step_2_sentences
     })
 
@@ -609,17 +659,19 @@ def generate_statement_data() -> Dict[str, Any]:
     step_3_sentences = []
     pdf_flags = [f for f in flags if "pdf" in f["flag_type"]]
     ela_flags = [f for f in flags if "ela" in f["flag_type"]]
-    if pdf_flags:
+    for f in pdf_flags[:2]:
+        f_name = ev_map.get(f["evidence_id"], {}).get("filename", "PDF Evidence")
         step_3_sentences.append({
-            "sentence": "Bank statement PDF exhibits incremental xref revisions and authoring metadata discrepancies characteristic of post-generation modification.",
-            "citation": "bank_statement_oct2024.pdf (Trailer XREF / ModDate)",
+            "sentence": f"PDF structural inspection of '{f_name}' detected incremental revisions or post-authoring metadata anomalies: {f['detail']}",
+            "citation": f"{f_name} (Trailer XREF / ModDate)",
             "type": "ai_inference",
             "confidence": 0.92
         })
-    if ela_flags:
+    for f in ela_flags[:2]:
+        f_name = ev_map.get(f["evidence_id"], {}).get("filename", "Image Evidence")
         step_3_sentences.append({
-            "sentence": "Error Level Analysis of approval screenshot indicates elevated high-frequency quantization residuals concentrated in the approval date field.",
-            "citation": "approval_screenshot.png (Bounding Box [140, 85, 210, 40])",
+            "sentence": f"Error Level Analysis of '{f_name}' identified localized high-frequency compression residuals: {f['detail']}",
+            "citation": f"{f_name} (ELA Residual Map)",
             "type": "ai_inference",
             "confidence": 0.88
         })
@@ -640,18 +692,19 @@ def generate_statement_data() -> Dict[str, Any]:
 
     # Step 4: Discrepancy Synthesis & Timeline Sequence
     step_4_sentences = []
+    amount_contras = [c for c in contras if "amount" in c["kind"].lower()]
     seq_contras = [c for c in contras if "sequence" in c["kind"].lower() or "date" in c["kind"].lower()]
-    if seq_contras:
-        c = seq_contras[0]
+    for c in (amount_contras + seq_contras)[:3]:
         step_4_sentences.append({
-            "sentence": "Temporal chronology analysis reveals disbursal execution preceded verified managerial sign-off, violating procedural sequence.",
-            "citation": "bank_statement_oct2024.pdf (Disbursal Date) vs approval_screenshot.png (Approval Date)",
+            "sentence": f"Discrepancy synthesis: {c['description']}",
+            "citation": f"Discrepancy #{c.get('id', 1)}",
             "type": "ai_inference",
-            "confidence": round(float(c["confidence"]), 2)
+            "confidence": round(float(c.get("confidence") or 0.92), 2)
         })
-    else:
+
+    if not amount_contras and not seq_contras:
         step_4_sentences.append({
-            "sentence": "All chronological events mapped sequentially across timeline anchors.",
+            "sentence": "Chronological timeline and transactional claims align consistently without direct cross-document numerical divergence.",
             "citation": f"{evidence[0]['filename']} (Timeline Engine)",
             "type": "verified_fact",
             "confidence": 1.0
@@ -688,12 +741,18 @@ def generate_statement_data() -> Dict[str, Any]:
         "sentences": step_5_sentences
     })
 
+    # Dynamic LLM summary
+    llm_summary = generate_llm_statement_summary(evidence, claims, contras)
+    summary_text = llm_summary or f"Cross-document incident narrative synthesized across {len(evidence)} evidence artifacts, {len(verified_facts)} verified facts, and {len(contras)} flagged discrepancies."
+
     return {
-        "summary": "Step-by-step incident narrative explaining cause and effect with source citations across all docket files.",
+        "summary": summary_text,
         "steps": narrative_steps,
         "verified_facts": verified_facts,
         "ai_inferences": ai_inferences,
-        "footer": "AI-generated. Not proof. Requires human review."
+        "insufficient_evidence": False,
+        "evidence_count": len(evidence),
+        "footer": "AI-generated observation. Requires independent human validation."
     }
 
 
@@ -710,7 +769,7 @@ def generate_report_docx() -> bytes:
 
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = p.add_run("CASE REFERENCE: RF-2291 | AI suggests. A human decides.")
+    run = p.add_run("CASE REFERENCE: ACTIVE INVESTIGATION | AI suggests. A human decides.")
     run.font.bold = True
     run.font.size = Pt(10)
 

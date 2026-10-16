@@ -74,46 +74,68 @@ export default function ExportPage() {
   const pendingCount = contradictions.filter((c) => c.review_status === "pending").length;
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-paper font-mono text-ink">
+    <div className="space-y-6 pt-4">
       {/* Step Header */}
-      <div className="border-b border-rule p-4 bg-paper shrink-0">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="bg-ink text-paper text-xs font-bold px-2 py-0.5">
-                STEP 5 OF 5
-              </span>
-              <h1 className="text-base font-bold tracking-wider uppercase">
-                EXPORT INVESTIGATION DOSSIER &amp; AUDIT LEDGER
-              </h1>
-            </div>
-            <p className="text-xs text-ink/70 mt-0.5">
-              Export verified docket including evidence statement, relationship graph summary, findings,
-              investigator decisions, and cryptographic SHA-256 audit log. Available in PDF, JSON, DOCX, and CSV formats.
-            </p>
-          </div>
-
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2">
+        <div>
           <div className="flex items-center space-x-2">
-            <Link
-              href="/statement"
-              className="border border-rule bg-white px-3 py-1.5 text-xs hover:bg-desk"
-            >
-              &larr; BACK: STATEMENT
-            </Link>
-            <span className="stamp-badge !text-[10px] !border-fact !text-fact">
-              FINAL STAGE
+            <span className="bg-zinc-950 text-white text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">
+              Step 5 of 5
             </span>
+            <h1 className="text-xl font-bold tracking-tight text-zinc-950">
+              Export Dossier &amp; Cryptographic Audit
+            </h1>
           </div>
+          <p className="text-xs text-zinc-500 mt-1">
+            Export verified docket including evidence statement, relationship graph summary, findings, and SHA-256 audit log.
+          </p>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <Link
+            href="/statement"
+            className="px-4 py-2 text-xs font-semibold text-zinc-700 bg-white border border-zinc-200/80 rounded-full hover:bg-zinc-50 shadow-sm transition-all"
+          >
+            &larr; Step 4: Statement
+          </Link>
+          <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full text-xs font-semibold">
+            Final Stage
+          </span>
         </div>
       </div>
 
       {/* Main Export Content */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-6">
-        <div className="max-w-6xl mx-auto space-y-6">
-          {/* Export Action Card Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* 1. PDF Export */}
-            <div className="paper-sheet p-4 border-2 border-ink bg-white flex flex-col justify-between space-y-3 shadow-[2px_2px_0px_0px_#1B1B18]">
+      <div className="space-y-6">
+        {evidenceList.length < 2 && !isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="max-w-xl w-full bento-card-white rounded-[28px] p-8 text-center space-y-4 shadow-sm border border-amber-200">
+              <div className="text-4xl">⚠️</div>
+              <h2 className="text-base font-bold uppercase tracking-wider text-amber-800">
+                Insufficient Evidence (At least 2 files required)
+              </h2>
+              <p className="text-xs text-zinc-600 leading-relaxed">
+                Exporting a verified court docket requires <strong>at least two (2) evidence files</strong>.
+                Currently {evidenceList.length} of 2 required files in docket.
+              </p>
+              <div className="bg-zinc-50 rounded-xl p-2.5 text-xs font-mono text-zinc-600 border border-zinc-200">
+                Status: <strong>Minimum 2 evidence files required to generate dossier</strong>
+              </div>
+              <div className="pt-2">
+                <Link
+                  href="/upload"
+                  className="bg-zinc-950 text-white px-6 py-2.5 text-xs font-semibold rounded-full hover:bg-black inline-block shadow-sm transition-all"
+                >
+                  &larr; Return to Step 1 &amp; Upload Files
+                </Link>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+        {/* Export Action Card Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* 1. PDF Export */}
+          <div className="bento-card-white rounded-[24px] p-5 flex flex-col justify-between space-y-3 shadow-sm">
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="stamp-badge !text-[9px]">COURT READY</span>
@@ -155,7 +177,7 @@ export default function ExportPage() {
               <div className="space-y-1.5 pt-2 border-t border-rule">
                 <a
                   href={`${API_URL}/api/report/docx`}
-                  download="VERITAS-024_docket_RF2291.docx"
+                  download="VERITAS-024_investigation_docket.docx"
                   className="w-full block text-center border-2 border-ink bg-paper py-1.5 text-xs font-bold uppercase hover:bg-desk active:translate-y-px"
                 >
                   DOWNLOAD DOCX ↓
@@ -246,7 +268,7 @@ export default function ExportPage() {
                   DOCKET FINDINGS &amp; HUMAN DECISION AUDIT
                 </h2>
               </div>
-              <span className="label-verified-fact">CASE: RF-2291</span>
+              <span className="label-verified-fact">CASE: TRC-2024</span>
             </div>
 
             {/* Metric Summary Bar */}
@@ -458,8 +480,9 @@ export default function ExportPage() {
               AI-generated. Not proof. Requires human review. This docket is cryptographically anchored and ready for regulatory submission.
             </p>
           </div>
-        </div>
-      </div>
+        </>
+      )}
+    </div>
 
       {/* Step Footer Navigation */}
       <div className="border-t border-rule p-3 bg-paper shrink-0">
@@ -471,14 +494,24 @@ export default function ExportPage() {
             &larr; STEP 4: STATEMENT
           </Link>
           <div className="flex items-center space-x-2">
-            <a
-              href={`${API_URL}/api/report`}
-              target="_blank"
-              rel="noreferrer"
-              className="border-2 border-ink bg-paper px-4 py-2 font-bold uppercase hover:bg-desk active:translate-y-px shadow-[2px_2px_0px_0px_#1B1B18]"
-            >
-              GENERATE OFFICIAL REPORT &nearr;
-            </a>
+            {evidenceList.length >= 2 ? (
+              <a
+                href={`${API_URL}/api/report`}
+                target="_blank"
+                rel="noreferrer"
+                className="border-2 border-ink bg-paper px-4 py-2 font-bold uppercase hover:bg-desk active:translate-y-px shadow-[2px_2px_0px_0px_#1B1B18]"
+              >
+                GENERATE OFFICIAL REPORT &nearr;
+              </a>
+            ) : (
+              <button
+                disabled
+                className="border-2 border-rule bg-desk text-ink/40 px-4 py-2 font-bold uppercase cursor-not-allowed"
+                title="At least two evidence files required"
+              >
+                🔒 GENERATE OFFICIAL REPORT (MIN 2 FILES)
+              </button>
+            )}
           </div>
         </div>
       </div>

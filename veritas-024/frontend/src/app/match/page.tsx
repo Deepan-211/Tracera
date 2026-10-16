@@ -68,6 +68,7 @@ const nodeTypes = {
 export default function MatchPage() {
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [], clusters: [] });
   const [contradictions, setContradictions] = useState<Contradiction[]>([]);
+  const [evidenceCount, setEvidenceCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [selectedCitation, setSelectedCitation] = useState<{
     title: string;
@@ -87,12 +88,14 @@ export default function MatchPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [g, c] = await Promise.all([
+      const [g, c, ev] = await Promise.all([
         getGraph().catch(() => ({ nodes: [], edges: [], clusters: [] })),
         getContradictions().catch(() => []),
+        getEvidenceList().catch(() => []),
       ]);
       setGraphData(g);
       setContradictions(c);
+      setEvidenceCount(ev.length);
     } catch (err) {
       console.error("Failed to load match data:", err);
     } finally {
@@ -244,47 +247,79 @@ export default function MatchPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-paper font-mono text-ink">
+    <div className="space-y-6 pt-4">
       {/* Step Header */}
-      <div className="border-b border-rule p-4 bg-paper shrink-0">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="bg-ink text-paper text-xs font-bold px-2 py-0.5">
-                STEP 3 OF 5
-              </span>
-              <h1 className="text-base font-bold tracking-wider uppercase">
-                ENTITY RELATIONSHIP GRAPH &amp; CONTRADICTION ADJUDICATION
-              </h1>
-            </div>
-            <p className="text-xs text-ink/70 mt-0.5">
-              Visual graph linking people, organizations, dates, amounts, and documents across files.
-              Contradictions in red. Review discrepancies with Accept, Dismiss, or Escalate.
-            </p>
-          </div>
-
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2">
+        <div>
           <div className="flex items-center space-x-2">
-            <Link
-              href="/extract"
-              className="border border-rule bg-white px-3 py-1.5 text-xs hover:bg-desk"
-            >
-              &larr; BACK: EXTRACT
-            </Link>
+            <span className="bg-zinc-950 text-white text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">
+              Step 3 of 5
+            </span>
+            <h1 className="text-xl font-bold tracking-tight text-zinc-950">
+              Entity Relationship Graph &amp; Contradictions
+            </h1>
+          </div>
+          <p className="text-xs text-zinc-500 mt-1">
+            Visual graph linking people, organizations, dates, amounts, and documents across files. Review discrepancies with Accept, Dismiss, or Escalate.
+          </p>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <Link
+            href="/extract"
+            className="px-4 py-2 text-xs font-semibold text-zinc-700 bg-white border border-zinc-200/80 rounded-full hover:bg-zinc-50 shadow-sm transition-all"
+          >
+            &larr; Step 2: Extract
+          </Link>
+          {evidenceCount >= 2 ? (
             <Link
               href="/statement"
-              className="border border-ink bg-white px-3 py-1.5 text-xs font-bold uppercase hover:bg-desk active:translate-y-px flex items-center space-x-1"
+              className="bg-zinc-950 text-white px-5 py-2 text-xs font-semibold rounded-full hover:bg-black active:scale-95 shadow-sm transition-all flex items-center space-x-1.5"
             >
-              <span>NEXT: EVIDENCE STATEMENT</span>
+              <span>Next: Statement</span>
               <span>&rarr;</span>
             </Link>
-          </div>
+          ) : (
+            <button
+              disabled
+              className="bg-zinc-100 text-zinc-400 px-5 py-2 text-xs font-semibold rounded-full cursor-not-allowed"
+              title="At least 2 files required"
+            >
+              🔒 Next: Statement (Min 2)
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Main 2-Column Matching Layout */}
-      <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden max-w-7xl w-full mx-auto p-4 gap-4">
+      {/* Main 2-Column Matching Layout or 2-File Blocker */}
+      {evidenceCount < 2 && !isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="max-w-xl w-full bento-card-white rounded-[28px] p-8 text-center space-y-4 shadow-sm border border-amber-200">
+            <div className="text-4xl">⚠️</div>
+            <h2 className="text-base font-bold uppercase tracking-wider text-amber-800">
+              Insufficient Evidence for Graph &amp; Contradiction Matching
+            </h2>
+            <p className="text-xs text-zinc-600 leading-relaxed">
+              Cross-document relationship graphing and contradiction adjudication require <strong>at least two (2) evidence files</strong>.
+              Currently only {evidenceCount} file{evidenceCount === 1 ? "" : "s"} present.
+            </p>
+            <div className="bg-zinc-50 rounded-xl p-2.5 text-xs font-mono text-zinc-600 border border-zinc-200">
+              Evidence Status: <strong>{evidenceCount} / 2 required files</strong>
+            </div>
+            <div className="pt-2">
+              <Link
+                href="/upload"
+                className="bg-zinc-950 text-white px-6 py-2.5 text-xs font-semibold rounded-full hover:bg-black inline-block shadow-sm transition-all"
+              >
+                &larr; Return to Step 1 &amp; Upload Files
+              </Link>
+            </div>
+          </div>
+        </div>
+      ) : (
+      <div className="flex flex-col lg:flex-row min-h-[580px] gap-5">
         {/* Left Column: Visual Relationship Graph Canvas */}
-        <div className="flex-1 flex flex-col min-h-[350px] border border-rule bg-white overflow-hidden relative">
+        <div className="flex-1 flex flex-col min-h-[400px] bento-card-white rounded-[28px] overflow-hidden relative shadow-sm">
           {/* Graph Toolbar */}
           <div className="p-2 border-b border-rule bg-desk/40 flex flex-wrap items-center justify-between gap-2 text-xs">
             <div className="flex items-center space-x-2">
@@ -552,6 +587,7 @@ export default function MatchPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Step Footer Navigation */}
       <div className="border-t border-rule p-3 bg-paper shrink-0">
@@ -562,13 +598,23 @@ export default function MatchPage() {
           >
             &larr; STEP 2: EXTRACT
           </Link>
-          <Link
-            href="/statement"
-            className="border-2 border-ink bg-paper px-4 py-2 font-bold uppercase hover:bg-desk active:translate-y-px flex items-center space-x-2 shadow-[2px_2px_0px_0px_#1B1B18]"
-          >
-            <span>PROCEED TO STEP 4: EVIDENCE STATEMENT</span>
-            <span>&rarr;</span>
-          </Link>
+          {evidenceCount >= 2 ? (
+            <Link
+              href="/statement"
+              className="border-2 border-ink bg-paper px-4 py-2 font-bold uppercase hover:bg-desk active:translate-y-px flex items-center space-x-2 shadow-[2px_2px_0px_0px_#1B1B18]"
+            >
+              <span>PROCEED TO STEP 4: EVIDENCE STATEMENT</span>
+              <span>&rarr;</span>
+            </Link>
+          ) : (
+            <button
+              disabled
+              className="border-2 border-rule bg-desk text-ink/40 px-4 py-2 font-bold uppercase cursor-not-allowed"
+              title="At least two files required"
+            >
+              🔒 PROCEED TO STEP 4 (MINIMUM 2 FILES REQUIRED)
+            </button>
+          )}
         </div>
       </div>
     </div>

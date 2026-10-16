@@ -2,7 +2,11 @@
  * API client and TypeScript definitions for VERITAS-024
  */
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== "undefined"
+    ? `${window.location.protocol}//${window.location.hostname}:8000`
+    : "http://127.0.0.1:8000");
 
 export type EpistemicLabel =
   | "VERIFIED_FACT"
@@ -121,18 +125,25 @@ export interface HealthResponse {
 
 // Fetch helper with error handling
 async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      "Accept": "application/json",
-      ...options?.headers,
-    },
-  });
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`API Error ${res.status}: ${errorText}`);
+  try {
+    const res = await fetch(`${API_URL}${endpoint}`, {
+      ...options,
+      headers: {
+        "Accept": "application/json",
+        ...options?.headers,
+      },
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`API Error ${res.status}: ${errorText}`);
+    }
+    return res.json();
+  } catch (err: any) {
+    if (err.name === "TypeError" && err.message?.includes("Failed to fetch")) {
+      console.warn(`Connection error fetching ${API_URL}${endpoint}`);
+    }
+    throw err;
   }
-  return res.json();
 }
 
 export async function getHealth(): Promise<HealthResponse> {
@@ -168,6 +179,17 @@ export async function uploadEvidenceFile(file: File, note?: string): Promise<Evi
   }
   return res.json();
 }
+
+export async function deleteEvidence(evidenceId: number): Promise<void> {
+  const res = await fetch(`${API_URL}/api/evidence/${evidenceId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Delete failed: ${err}`);
+  }
+}
+
 
 export async function triggerAnalyze(): Promise<{ status: string; message: string }> {
   return apiFetch("/api/analyze", { method: "POST" });
@@ -260,6 +282,8 @@ export interface StatementData {
   steps: StatementStep[];
   verified_facts: VerifiedFactItem[];
   ai_inferences: AIInferenceItem[];
+  insufficient_evidence?: boolean;
+  evidence_count?: number;
   footer: string;
 }
 

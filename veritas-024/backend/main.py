@@ -64,7 +64,8 @@ app = FastAPI(
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"],
+    allow_origin_regex=r"^https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -106,7 +107,7 @@ def ingest_file_pipeline(
 
     # Perceptual hash for images
     phash = None
-    is_image = ext in ["png", "jpg", "jpeg"]
+    is_image = ext in ["png", "jpg", "jpeg", "webp", "bmp", "tiff", "gif"]
     if is_image:
         phash = forensics.compute_phash_image(file_bytes)
 
@@ -158,11 +159,21 @@ def ingest_file_pipeline(
         meta.update(eml_meta)
         content_preview = full_text
 
-    elif ext in ["txt", "json"]:
+    elif ext in ["docx"]:
+        full_text = forensics.extract_docx_text(file_bytes)
+        content_preview = full_text
+
+    elif ext in ["txt", "json", "csv", "tsv", "log", "md", "xml", "html"]:
         flags, chat_meta, full_text = forensics.parse_chat_export(file_bytes, filename)
         tamper_flags.extend(flags)
         meta.update(chat_meta)
         content_preview = full_text
+
+    else:
+        # Generalized format support (e.g. docx, xlsx, audio, video, raw bin)
+        full_text = forensics.extract_generic_text(file_bytes)
+        content_preview = full_text
+        meta["format_category"] = "general_artifact"
 
     meta["content_preview"] = content_preview[:4000]
 
@@ -202,26 +213,8 @@ def ingest_file_pipeline(
             label=flag.get("label", "TAMPER_INDICATOR")
         )
 
-    # Automatically extract and store claims
-    try:
-        extracted_claims = extraction.extract_all_claims_for_evidence(
-            filename=filename,
-            file_type=ext,
-            file_bytes=file_bytes
-        )
-        for cl in extracted_claims:
-            database.insert_claim(
-                evidence_id=evidence_id,
-                claim_type=cl.claim_type,
-                value=cl.value,
-                normalized_value=cl.normalized_value,
-                label="EXTRACTED_OBSERVATION",
-                location_ref=cl.location_ref,
-                confidence=cl.confidence,
-                method=cl.method
-            )
-    except Exception as e:
-        print(f"Extraction error for {filename}: {e}")
+    # Note: Content extraction is intentionally deferred to Step 2 (Investigation Engine)
+    # Page 1 ONLY performs hash calculation, immutable vault storage, and tamper checks.
 
     # Write audit log entry
     audit.log_audit_entry(
@@ -296,6 +289,22 @@ def get_evidence_detail(evidence_id: int):
     }
 
 
+@app.delete("/api/evidence/{evidence_id}", tags=["Evidence"])
+def delete_evidence_endpoint(evidence_id: int):
+    item = database.get_evidence_by_id(evidence_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Evidence not found")
+    database.delete_evidence(evidence_id)
+    audit.log_audit_entry(
+        action="EVIDENCE_DELETE",
+        target=f"EVIDENCE:{evidence_id}",
+        detail={"filename": item.get("filename"), "sha256": item.get("sha256")},
+        actor="user"
+    )
+    return {"status": "deleted", "id": evidence_id}
+
+
+
 @app.get("/api/evidence/{evidence_id}/file", tags=["Evidence"])
 def get_evidence_raw_file(evidence_id: int):
     item = database.get_evidence_by_id(evidence_id)
@@ -347,35 +356,22 @@ def get_evidence_ela_heatmap(evidence_id: int):
 @app.post("/api/seed/reset", tags=["Investigation"])
 def reset_seed_case():
     """
-    Clear database and reset the canonical RF-2291 investigation demo case.
+    Clear database and reset clean blank docket. Zero predefined or synthetic data.
     """
     database.clear_all_data()
 
     audit.log_audit_entry(
         action="CASE_RESET",
-        target="CASE:RF-2291",
-        detail={"message": "Cleared docket and initiated seed case RF-2291"},
+        target="CASE:ACTIVE_INVESTIGATION",
+        detail={"message": "Cleared all evidence docket records for fresh investigation"},
         actor="system"
     )
 
-    seed_files = seed_case.get_seed_files()
-    ingested = []
-    for filename, file_type, raw_bytes, note in seed_files:
-        item = ingest_file_pipeline(
-            filename=filename,
-            file_bytes=raw_bytes,
-            source_note=note
-        )
-        ingested.append(item)
-
-    # Immediately run investigation pipeline so the full case is ready
-    analysis_stats = investigation_engine.run_investigation_pipeline()
-
     return {
         "status": "ok",
-        "message": f"Successfully reset and ingested {len(ingested)} seed documents for RF-2291 with full forensic pipeline executed.",
-        "ingested_count": len(ingested),
-        "analysis": analysis_stats
+        "message": "Docket cleared. Ready for fresh evidence ingestion.",
+        "ingested_count": 0,
+        "analysis": {"status": "ok", "message": "Docket ready."}
     }
 
 
@@ -396,10 +392,18 @@ def clear_case_docket():
 def trigger_analysis():
     """
     Triggers complete investigation pipeline:
-    Extracts unparsed claims, links entities, builds graph, creates timeline,
-    and detects contradictions under epistemic integrity rules.
+    Requires at least two (2) evidence files for cross-document forensic investigation.
     """
+    all_evidence = database.get_all_evidence()
+    if len(all_evidence) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="At least two (2) evidence files are required to execute cross-document forensic investigation."
+        )
+
     res = investigation_engine.run_investigation_pipeline()
+    if res.get("status") == "error":
+        raise HTTPException(status_code=400, detail=res["message"])
     return res
 
 
@@ -422,9 +426,21 @@ def get_graph():
     import networkx as nx
     G = nx.Graph()
     nodes = []
+    all_flags = database.get_all_tamper_flags()
+    contras = database.get_all_contradictions()
+    flagged_names = set()
+    for f in all_flags:
+        for ent in entities:
+            if ent["name"].lower() in f.get("detail", "").lower():
+                flagged_names.add(ent["name"])
+    for c in contras:
+        for ent in entities:
+            if ent["name"].lower() in c.get("description", "").lower() or ent["name"].lower() in c.get("narrative", "").lower():
+                flagged_names.add(ent["name"])
+
     for ent in entities:
         nid = str(ent["id"])
-        is_flagged = ent["name"] in ["R. Kumar Enterprises", "Ravi Kumar", "RF-2291", "Account Ending 4417"]
+        is_flagged = ent["name"] in flagged_names
         nodes.append({
             "id": nid,
             "label": ent["name"],
@@ -611,7 +627,7 @@ def get_report_docx():
     return Response(
         content=docx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": "attachment; filename=VERITAS-024_docket_RF2291.docx"}
+        headers={"Content-Disposition": "attachment; filename=VERITAS-024_docket.docx"}
     )
 
 
